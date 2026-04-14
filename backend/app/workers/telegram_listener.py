@@ -66,6 +66,7 @@ async def _attach_user(user_id: str, session_str: str, redis_client):
         StringSession(session_str),
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH,
+        catch_up=True,  # fetch updates missed while disconnected / lost to API
     )
     try:
         await client.connect()
@@ -77,15 +78,33 @@ async def _attach_user(user_id: str, session_str: str, redis_client):
         me = await client.get_me()
         log.info(f"Attached listener for user {user_id} ({me.first_name or ''} {me.last_name or ''})")
 
+        # Prime the update state for DMs. Telegram's MTProto only pushes
+        # updates for chats this session has recently "seen"; without
+        # fetching dialogs, we receive group/channel events (via their
+        # separate PTS state) but no 1-to-1 DM NewMessage events.
+        try:
+            dialogs = await client.get_dialogs(limit=100)
+            dm_count = sum(1 for d in dialogs if d.is_user)
+            log.info(f"[{user_id}] Primed state — {len(dialogs)} dialogs ({dm_count} DMs)")
+        except Exception as e:
+            log.warning(f"[{user_id}] Failed to prime dialogs: {e}")
+
         db = get_db()
 
         @client.on(events.NewMessage(incoming=True))
         async def handler(event):
+            # Only DMs — group/channel noise is ignored by design.
+            # Each contact is a person the user imported, so we don't
+            # care about group chatter even if a contact wrote there.
+            if not event.is_private:
+                return
+
             sender_id = event.sender_id
             if sender_id == me.id:
                 return
 
-            log.info(f"[{user_id}] 📨 New message from sender_id={sender_id}: {(event.message.message or '')[:60]}")
+            preview = (event.message.message or "")[:60]
+            log.info(f"[{user_id}] 📨 DM from sender_id={sender_id}: {preview}")
 
             # Only accept messages from senders that are already in the user's
             # contact list (imported via UI). Everything else (bots, spam,
@@ -97,6 +116,7 @@ async def _attach_user(user_id: str, session_str: str, redis_client):
                 "platforms.profile_id": str(sender_id),
             })
             if not contact:
+                log.info(f"[{user_id}] Sender {sender_id} not in contacts — skipping")
                 return
 
             contact_id = str(contact["_id"])
@@ -209,10 +229,14 @@ async def main():
 
     # Re-scan every 15 seconds — picks up newly connected users quickly
     # and recovers from dropped/rotated sessions without a container restart.
+    tick = 0
     try:
         while True:
             await asyncio.sleep(15)
             await scan_and_attach_users(redis_client)
+            tick += 1
+            if tick % 20 == 0:  # heartbeat every ~5 min
+                log.info(f"Heartbeat — {len(active_clients)} active listeners")
     except asyncio.CancelledError:
         log.info("Shutdown requested")
     finally:
