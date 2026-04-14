@@ -258,8 +258,109 @@ async def import_selected(user_id: str, google_ids: list[str]) -> dict:
     return {"imported": imported, "skipped": skipped}
 
 
+async def fetch_contact_messages(user_id: str, contact_id: str, max_results: int = 30) -> list[dict]:
+    """Fetch Gmail messages with a contact and sync to MongoDB."""
+    db = get_db()
+    contact = await db.contacts.find_one({"_id": __import__("bson").ObjectId(contact_id), "owner_id": user_id})
+    if not contact or not contact.get("email"):
+        return []
+
+    contact_email = contact["email"]
+    creds = await _get_credentials(user_id)
+    service = build("gmail", "v1", credentials=creds)
+
+    # Get user's email to determine direction
+    user_info = service.users().getProfile(userId="me").execute()
+    my_email = user_info.get("emailAddress", "").lower()
+
+    query = f"from:{contact_email} OR to:{contact_email}"
+    results = service.users().messages().list(
+        userId="me", q=query, maxResults=max_results
+    ).execute()
+
+    messages = []
+    for msg_ref in results.get("messages", []):
+        external_id = msg_ref["id"]
+
+        # Check if already saved
+        existing = await db.messages.find_one({
+            "owner_id": user_id,
+            "platform": "gmail",
+            "external_id": external_id,
+        })
+        if existing:
+            existing["_id"] = str(existing["_id"])
+            messages.append(existing)
+            continue
+
+        msg = service.users().messages().get(
+            userId="me", id=external_id, format="metadata",
+            metadataHeaders=["From", "To", "Subject", "Date"],
+        ).execute()
+
+        headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+        from_header = headers.get("From", "").lower()
+        direction = "outbound" if my_email and my_email in from_header else "inbound"
+
+        # Parse date
+        from email.utils import parsedate_to_datetime
+        try:
+            sent_at = parsedate_to_datetime(headers.get("Date", ""))
+            if sent_at.tzinfo is not None:
+                sent_at = sent_at.replace(tzinfo=None)
+        except Exception:
+            sent_at = datetime.utcnow()
+
+        doc = {
+            "owner_id": user_id,
+            "contact_id": contact_id,
+            "platform": "gmail",
+            "direction": direction,
+            "content": msg.get("snippet", ""),
+            "subject": headers.get("Subject", ""),
+            "media_urls": [],
+            "external_id": external_id,
+            "read": direction == "outbound",
+            "sent_at": sent_at,
+            "created_at": datetime.utcnow(),
+        }
+        res = await db.messages.insert_one(doc)
+        doc["_id"] = str(res.inserted_id)
+        messages.append(doc)
+
+        # For fresh inbound emails — create notification + push WS so the
+        # inbox/notifications UI update in real time during a sync.
+        if direction == "inbound":
+            subject = headers.get("Subject", "") or "(без теми)"
+            snippet = msg.get("snippet", "")
+            await db.notifications.insert_one({
+                "owner_id": user_id,
+                "type": "new_message",
+                "title": f"Лист від {contact.get('name') or contact_email}",
+                "body": (f"{subject}: {snippet}" if snippet else subject)[:200],
+                "contact_id": contact_id,
+                "read": False,
+                "platform": "gmail",
+                "created_at": datetime.utcnow(),
+            })
+            from app.services.realtime import publish_event
+            await publish_event(user_id, "new_message", {
+                "contact_id": contact_id,
+                "contact_name": contact.get("name", ""),
+                "contact_avatar": contact.get("avatar_url", ""),
+                "platform": "gmail",
+                "content": snippet,
+                "subject": subject,
+                "sent_at": sent_at.isoformat() if sent_at else "",
+            })
+
+    # Sort ascending
+    messages.sort(key=lambda m: m.get("sent_at") or datetime.min)
+    return messages
+
+
 async def get_messages(user_id: str, contact_email: str, max_results: int = 20) -> list[dict]:
-    """Get Gmail messages exchanged with a specific contact."""
+    """Legacy endpoint — kept for backwards compatibility."""
     creds = await _get_credentials(user_id)
     service = build("gmail", "v1", credentials=creds)
 

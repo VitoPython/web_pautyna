@@ -7,11 +7,12 @@ class Message(BaseModel):
     id: str | None = Field(None, alias="_id")
     owner_id: str
     contact_id: str
-    platform: str  # linkedin | instagram
+    platform: str  # telegram | gmail | linkedin | instagram
     direction: str  # inbound | outbound
-    content: str
+    content: str = ""
+    subject: str = ""  # for email
     media_urls: list[str] = []
-    unipile_message_id: str | None = None
+    external_id: str = ""  # telegram msg id / gmail msg id
     read: bool = False
     sent_at: datetime = Field(default_factory=datetime.utcnow)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -21,6 +22,7 @@ class MessageSend(BaseModel):
     contact_id: str
     platform: str
     content: str
+    subject: str = ""  # for email
 
 
 class Notification(BaseModel):

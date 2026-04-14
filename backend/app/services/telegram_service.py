@@ -25,8 +25,12 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 _clients: dict[str, TelegramClient] = {}
 
 
-async def _get_or_create_client(user_id: str) -> TelegramClient:
-    """Get cached client or create new one from stored session."""
+async def _get_or_create_client(user_id: str, auth_mode: bool = False) -> TelegramClient:
+    """Get cached client or create new one from stored session.
+
+    Default: receive_updates=False so events flow to tg-listener worker.
+    auth_mode=True: creates a fresh client without session (for login flow).
+    """
     if user_id in _clients and _clients[user_id].is_connected():
         return _clients[user_id]
 
@@ -40,6 +44,7 @@ async def _get_or_create_client(user_id: str) -> TelegramClient:
         StringSession(session_str),
         settings.TELEGRAM_API_ID,
         settings.TELEGRAM_API_HASH,
+        receive_updates=False,  # let tg-listener receive events exclusively
     )
     await client.connect()
     _clients[user_id] = client
@@ -259,6 +264,140 @@ async def get_recent_chats(user_id: str, limit: int = 30) -> list[dict]:
             })
 
     return chats
+
+
+async def send_message(user_id: str, tg_profile_id: str, text: str) -> dict:
+    """Send a Telegram message to a user by their Telegram ID."""
+    client = await _get_or_create_client(user_id)
+    if not await client.is_user_authorized():
+        raise ValueError("Telegram not connected")
+
+    entity = await client.get_entity(int(tg_profile_id))
+    result = await client.send_message(entity, text)
+    return {
+        "message_id": result.id,
+        "date": result.date.isoformat() if result.date else "",
+    }
+
+
+async def fetch_message_history(user_id: str, tg_profile_id: str, limit: int = 50) -> list[dict]:
+    """Fetch recent message history with a Telegram user and sync to MongoDB."""
+    client = await _get_or_create_client(user_id)
+    if not await client.is_user_authorized():
+        raise ValueError("Telegram not connected")
+
+    db = get_db()
+    entity = await client.get_entity(int(tg_profile_id))
+    me = await client.get_me()
+
+    # Find our contact record for this telegram user
+    contact = await db.contacts.find_one({
+        "owner_id": user_id,
+        "platforms.type": "telegram",
+        "platforms.profile_id": str(tg_profile_id),
+    })
+    if not contact:
+        return []
+    contact_id = str(contact["_id"])
+
+    messages = []
+    async for msg in client.iter_messages(entity, limit=limit):
+        if not msg.message:
+            continue
+
+        direction = "outbound" if msg.sender_id == me.id else "inbound"
+        external_id = str(msg.id)
+
+        # Check if already saved
+        existing = await db.messages.find_one({
+            "owner_id": user_id,
+            "platform": "telegram",
+            "external_id": external_id,
+        })
+        if existing:
+            existing["_id"] = str(existing["_id"])
+            messages.append(existing)
+            continue
+
+        doc = {
+            "owner_id": user_id,
+            "contact_id": contact_id,
+            "platform": "telegram",
+            "direction": direction,
+            "content": msg.message,
+            "subject": "",
+            "media_urls": [],
+            "external_id": external_id,
+            "read": direction == "outbound",
+            "sent_at": msg.date,
+            "created_at": datetime.utcnow(),
+        }
+        res = await db.messages.insert_one(doc)
+        doc["_id"] = str(res.inserted_id)
+        messages.append(doc)
+
+    # Sort by sent_at ascending for chat display
+    messages.sort(key=lambda m: m.get("sent_at") or datetime.min)
+    return messages
+
+
+async def listen_for_messages(user_id: str, ws_manager=None):
+    """Long-running task: listen for new incoming Telegram messages and save them.
+
+    This is meant to run as a Celery task or background process.
+    """
+    from telethon import events
+
+    client = await _get_or_create_client(user_id)
+    if not await client.is_user_authorized():
+        return
+
+    db = get_db()
+    me = await client.get_me()
+
+    @client.on(events.NewMessage(incoming=True))
+    async def handler(event):
+        sender_id = event.sender_id
+        if sender_id == me.id:
+            return
+
+        # Find contact
+        contact = await db.contacts.find_one({
+            "owner_id": user_id,
+            "platforms.type": "telegram",
+            "platforms.profile_id": str(sender_id),
+        })
+        if not contact:
+            return  # Message from user not in contacts — skip
+
+        contact_id = str(contact["_id"])
+        doc = {
+            "owner_id": user_id,
+            "contact_id": contact_id,
+            "platform": "telegram",
+            "direction": "inbound",
+            "content": event.message.message or "",
+            "subject": "",
+            "media_urls": [],
+            "external_id": str(event.message.id),
+            "read": False,
+            "sent_at": event.message.date,
+            "created_at": datetime.utcnow(),
+        }
+        await db.messages.insert_one(doc)
+
+        # Push via WebSocket if available
+        if ws_manager:
+            await ws_manager.send_to_user(user_id, "new_message", {
+                "contact_id": contact_id,
+                "contact_name": contact.get("name", ""),
+                "platform": "telegram",
+                "content": event.message.message or "",
+                "sent_at": event.message.date.isoformat() if event.message.date else "",
+            })
+
+    # Run forever
+    await client.run_until_disconnected()
 
 
 async def disconnect(user_id: str):
