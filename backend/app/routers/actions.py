@@ -73,3 +73,35 @@ async def delete_action(action_id: str, user_id: str = Depends(get_current_user_
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Action not found")
     return {"ok": True}
+
+
+@router.post("/{action_id}/run")
+async def run_action_now(action_id: str, user_id: str = Depends(get_current_user_id)):
+    """Enqueue this action to run immediately (ad-hoc trigger from UI)."""
+    db = get_db()
+    action = await db.actions.find_one({"_id": ObjectId(action_id), "owner_id": user_id})
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    from app.tasks.action_tasks import execute_action
+    execute_action.delay(action_id)
+    return {"queued": True}
+
+
+@router.get("/failed")
+async def list_failed_actions(user_id: str = Depends(get_current_user_id)):
+    """List entries from the dead-letter collection (actions that exhausted retries)."""
+    db = get_db()
+    items = await db.failed_actions.find({"owner_id": user_id}).sort("failed_at", -1).to_list(200)
+    for item in items:
+        item["_id"] = str(item["_id"])
+    return items
+
+
+@router.delete("/failed/{item_id}")
+async def delete_failed_action(item_id: str, user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    result = await db.failed_actions.delete_one({"_id": ObjectId(item_id), "owner_id": user_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Failed action not found")
+    return {"ok": True}
