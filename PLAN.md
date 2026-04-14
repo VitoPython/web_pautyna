@@ -130,23 +130,23 @@
 - [ ] Вкладені підсторінки (sub_pages) — на потім
 
 ### 2.2 Inbox (повідомлення)
-- [ ] Сторінка `/inbox` — список чатів по контактах
-- [ ] ChatView компонент — переписка з контактом
-- [ ] Telegram listener — фоновий процес що слухає вхідні повідомлення 24/7
-- [ ] Збереження повідомлень в MongoDB (messages колекція)
-- [ ] Відправка повідомлень через Telegram
-- [ ] Gmail inbox — читання листів по контакту
-- [ ] Відправка листів через Gmail
-- [ ] Real-time через WebSocket (нові повідомлення live)
-- [ ] Фільтри: по платформі, по контакту, прочитані/непрочитані
-- [ ] AI-підказки для відповідей (Claude) — пізніше
+- [x] Сторінка `/inbox` — список чатів по контактах
+- [x] ChatView компонент — переписка з контактом
+- [x] Telegram listener — фоновий процес що слухає вхідні повідомлення 24/7
+- [x] Збереження повідомлень в MongoDB (messages колекція)
+- [x] Відправка повідомлень через Telegram
+- [x] Gmail inbox — читання листів по контакту
+- [x] Відправка листів через Gmail
+- [x] Real-time через WebSocket (нові повідомлення live) — через Redis pub/sub
+- [x] Фільтри: по платформі, по контакту, прочитані/непрочитані
+- [ ] AI-підказки для відповідей (Claude) — пізніше (Phase 3.3)
 
 ### 2.3 Notifications
-- [ ] Сторінка `/notifications` — центр сповіщень
-- [ ] Real-time нотифікації через WebSocket
-- [ ] Badge з кількістю непрочитаних в sidebar
-- [ ] Типи: new_message, action_completed, new_post, connection_accepted
-- [ ] Mark as read / Mark all as read
+- [x] Сторінка `/notifications` — центр сповіщень
+- [x] Real-time нотифікації через WebSocket
+- [x] Badge з кількістю непрочитаних в sidebar
+- [x] Типи: new_message (action_completed / new_post / connection_accepted — з'являться у Phase 3/4)
+- [x] Mark as read / Mark all as read
 
 ### 2.4 Фонові задачі
 - [ ] Повна реалізація execute_action (Celery)
