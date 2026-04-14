@@ -149,10 +149,11 @@
 - [x] Mark as read / Mark all as read
 
 ### 2.4 Фонові задачі
-- [ ] Повна реалізація execute_action (Celery)
-- [ ] Retry механізм + dead letter queue
-- [ ] Sync contacts periodic task
-- [ ] Webhook endpoint для Unipile (`/webhooks/unipile`)
+- [x] Повна реалізація execute_action (Celery) — send_message / create_note / add_reminder
+- [x] Retry механізм + dead letter queue (`failed_actions` колекція)
+- [x] Sync contacts periodic task (every 15 min)
+- [x] Webhook endpoint для Unipile (`/webhooks/unipile`) — signature TODO
+- [x] Celery beat schedule: actions_scheduler (1 min), follow_up_checker (hourly), sync_contacts_all (15 min)
 
 ---
 

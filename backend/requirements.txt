@@ -16,3 +16,4 @@ google-auth-oauthlib==1.2.1
 google-api-python-client==2.166.0
 telethon==1.37.0
 cryptg==0.4.0
+croniter==2.0.7

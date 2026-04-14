@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Unipile
     UNIPILE_API_KEY: str = ""
     UNIPILE_DSN: str = ""
+    UNIPILE_WEBHOOK_SECRET: str = ""  # HMAC-SHA256 secret for incoming webhook verification
 
     # Anthropic
     ANTHROPIC_API_KEY: str = ""
