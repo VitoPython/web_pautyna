@@ -1,6 +1,10 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import { useContactPage } from "@/hooks/useContactPage";
 import type { GraphNode } from "./WebCanvas";
+
+const BlockEditor = dynamic(() => import("@/components/notion/BlockEditor"), { ssr: false });
 
 interface ContactPanelProps {
   contact: GraphNode;
@@ -16,6 +20,9 @@ const PLATFORM_INFO: Record<string, { label: string; color: string }> = {
 };
 
 export default function ContactPanel({ contact, onClose, onDelete }: ContactPanelProps) {
+  const contactId = contact.isCenter ? null : contact.id;
+  const { page, loading: pageLoading, saving, saveBlocks } = useContactPage(contactId);
+
   if (contact.isCenter) {
     return (
       <div className="w-80 shrink-0 bg-zinc-900 border-l border-zinc-800 h-full flex flex-col">
@@ -107,12 +114,29 @@ export default function ContactPanel({ contact, onClose, onDelete }: ContactPane
         </div>
       </div>
 
-      {/* Notion placeholder */}
-      <div className="flex-1 p-4 overflow-auto">
-        <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Нотатки</p>
-        <div className="border border-dashed border-zinc-700 rounded-lg p-4 text-center">
-          <p className="text-zinc-600 text-sm">Notion-редактор буде тут</p>
+      {/* Notion editor */}
+      <div className="flex-1 overflow-auto min-h-0">
+        <div className="flex items-center justify-between px-4 pt-4 pb-2 sticky top-0 bg-zinc-900 z-10">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Нотатки</p>
+          {saving && (
+            <span className="text-xs text-zinc-600 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-pulse" />
+              Збереження
+            </span>
+          )}
         </div>
+        {pageLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-5 h-5 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : page ? (
+          <div className="px-3 pb-6">
+            <BlockEditor
+              initialContent={page.blocks}
+              onChange={saveBlocks}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* Delete */}

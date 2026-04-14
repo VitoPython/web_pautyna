@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import close_db, connect_db
-from app.routers import actions, auth, canvas, contacts, gmail, integrations, linkedin, messages, notifications, pages, telegram
+from app.routers import actions, auth, canvas, contacts, gmail, integrations, linkedin, messages, notifications, pages, telegram, uploads
 from app.services.websocket_manager import ws_manager
 
 
@@ -42,6 +42,7 @@ app.include_router(integrations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(telegram.router, prefix=settings.API_V1_PREFIX)
 app.include_router(gmail.router, prefix=settings.API_V1_PREFIX)
 app.include_router(linkedin.router, prefix=settings.API_V1_PREFIX)
+app.include_router(uploads.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health")

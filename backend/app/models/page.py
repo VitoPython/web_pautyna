@@ -35,4 +35,4 @@ class PageCreate(BaseModel):
 class PageUpdate(BaseModel):
     title: str | None = None
     icon: str | None = None
-    blocks: list[Block] | None = None
+    blocks: dict | list[dict] | None = None  # TipTap JSON doc

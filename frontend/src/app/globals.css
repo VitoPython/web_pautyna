@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tippy.js/dist/tippy.css";
 
 :root {
   --background: #09090b;
@@ -23,16 +24,389 @@ body {
   width: 6px;
   height: 6px;
 }
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: #3f3f46;
   border-radius: 3px;
 }
+::-webkit-scrollbar-thumb:hover { background: #52525b; }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+/* ═══════════════════════════════════════════════════════
+   TipTap — Notion-like editor
+   ═══════════════════════════════════════════════════════ */
+.tt-wrapper {
+  width: 100%;
 }
+
+.tt-editor {
+  outline: none;
+  font-size: 15px;
+  line-height: 1.7;
+  color: #d4d4d8;
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  caret-color: #a78bfa;
+}
+
+.tt-editor > * + * { margin-top: 4px; }
+
+/* Paragraph */
+.tt-editor p {
+  margin: 2px 0;
+  padding: 3px 2px;
+  line-height: 1.7;
+}
+
+/* Placeholder */
+.tt-editor p.is-editor-empty:first-child::before,
+.tt-editor .is-empty::before {
+  content: attr(data-placeholder);
+  color: #52525b;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+
+/* Headings */
+.tt-editor h1 {
+  font-size: 30px;
+  line-height: 1.25;
+  font-weight: 700;
+  color: #fafafa;
+  letter-spacing: -0.02em;
+  margin: 20px 0 4px;
+  padding: 2px;
+}
+.tt-editor h2 {
+  font-size: 24px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #fafafa;
+  letter-spacing: -0.015em;
+  margin: 16px 0 2px;
+  padding: 2px;
+}
+.tt-editor h3 {
+  font-size: 19px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #fafafa;
+  margin: 12px 0 2px;
+  padding: 2px;
+}
+
+/* Lists */
+.tt-editor ul,
+.tt-editor ol {
+  padding-left: 22px;
+  margin: 4px 0;
+}
+.tt-editor li {
+  padding: 1px 0;
+}
+.tt-editor li::marker { color: #71717a; }
+
+/* Task list */
+.tt-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 4px;
+}
+.tt-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 2px 0;
+}
+.tt-editor ul[data-type="taskList"] li > label {
+  margin-top: 4px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.tt-editor ul[data-type="taskList"] li > div { flex: 1; }
+.tt-editor ul[data-type="taskList"] input[type="checkbox"] {
+  accent-color: #8b5cf6;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.tt-editor ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: #71717a;
+  text-decoration: line-through;
+}
+
+/* Blockquote */
+.tt-editor blockquote {
+  border-left: 3px solid #52525b;
+  padding: 2px 0 2px 14px;
+  color: #a1a1aa;
+  margin: 6px 0;
+}
+
+/* Code inline */
+.tt-editor code {
+  background: #1c1c1f;
+  color: #f9a8d4;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: var(--font-mono), "SF Mono", "Menlo", monospace;
+  border: 1px solid #27272a;
+}
+
+/* Code block */
+.tt-editor pre {
+  background: #18181b;
+  color: #e4e4e7;
+  padding: 14px 18px;
+  border-radius: 8px;
+  border: 1px solid #27272a;
+  font-family: var(--font-mono), "SF Mono", "Menlo", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.tt-editor pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+/* Horizontal rule */
+.tt-editor hr {
+  border: none;
+  border-top: 1px solid #27272a;
+  margin: 14px 0;
+}
+
+/* Bold, italic, strike */
+.tt-editor strong { color: #ffffff; font-weight: 700; }
+.tt-editor em { color: #e4e4e7; font-style: italic; }
+.tt-editor s { color: #71717a; }
+
+/* Links */
+.tt-link,
+.tt-editor a {
+  color: #a78bfa;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.4);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.tt-editor a:hover { border-bottom-color: #a78bfa; }
+
+/* Selection */
+.tt-editor ::selection { background: rgba(139, 92, 246, 0.3); }
+
+/* Images */
+.tt-image,
+.tt-editor img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 8px 0;
+  display: block;
+  background: #18181b;
+}
+
+/* Video — controls fully work, no overlay blocking */
+.tt-editor video {
+  max-width: 100%;
+  width: 100%;
+  border-radius: 6px;
+  margin: 8px 0;
+  display: block;
+  background: #000;
+}
+
+/* Selected node outline (image/video/file) */
+.tt-editor .ProseMirror-selectednode {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* File attachment */
+.tt-file-attachment {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin: 6px 0;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  text-decoration: none !important;
+  color: #e4e4e7 !important;
+  border-bottom: 1px solid #27272a !important;
+  transition: all 0.15s;
+  max-width: 400px;
+}
+.tt-file-attachment:hover {
+  background: #27272a;
+  border-color: #3f3f46 !important;
+}
+.tt-file-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.tt-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.tt-file-name {
+  font-size: 14px;
+  color: #fafafa;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tt-file-size {
+  font-size: 12px;
+  color: #71717a;
+}
+
+/* Tables */
+.tt-editor table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid #27272a;
+}
+.tt-editor th,
+.tt-editor td {
+  border: 1px solid #27272a;
+  padding: 8px 12px;
+  vertical-align: top;
+  min-width: 80px;
+}
+.tt-editor th {
+  background: #18181b;
+  color: #fafafa;
+  font-weight: 600;
+  text-align: left;
+}
+
+/* ═══ Bubble menu (text formatting) ═══ */
+.tt-bubble {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #1c1c1f;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+.tt-bubble-sep {
+  width: 1px;
+  height: 20px;
+  background: #27272a;
+  margin: 0 2px;
+}
+.tt-bubble-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  color: #d4d4d8;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s;
+}
+.tt-bubble-btn:hover {
+  background: #27272a;
+  color: #fafafa;
+}
+.tt-bubble-btn-active {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+}
+
+/* ═══ Slash menu ═══ */
+.tt-slash-menu {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  max-height: 360px;
+  overflow-y: auto;
+  min-width: 260px;
+}
+.tt-slash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #e4e4e7;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.tt-slash-item-active { background: #27272a; }
+.tt-slash-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #27272a;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #a1a1aa;
+  flex-shrink: 0;
+}
+.tt-slash-item-active .tt-slash-icon {
+  background: #3f3f46;
+  color: #fafafa;
+}
+.tt-slash-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.tt-slash-title {
+  font-size: 14px;
+  color: #fafafa;
+  font-weight: 500;
+}
+.tt-slash-desc {
+  font-size: 12px;
+  color: #71717a;
+}
+.tt-slash-empty {
+  padding: 12px 10px;
+  color: #71717a;
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Tippy theme override for slash menu */
+.tippy-box[data-theme~="notion-slash"] {
+  background: transparent;
+  box-shadow: none;
+}
+.tippy-box[data-theme~="notion-slash"] .tippy-content {
+  padding: 0;
+}
+.tippy-box[data-theme~="notion-slash"] .tippy-arrow { display: none; }

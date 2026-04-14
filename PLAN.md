@@ -112,20 +112,34 @@
 
 ## Фаза 2 — Серцевина
 
-### 2.1 Notion-редактор у вузлах
-- [ ] BlockNote редактор всередині кожного контакту
-- [ ] Типи блоків: heading, paragraph, todo, image, video, table
-- [ ] Вкладені підсторінки (sub_pages)
-- [ ] Збереження блоків в MongoDB (pages колекція)
-- [ ] Сторінка `/notion` — список всіх сторінок
+### 2.1 Notion-редактор у вузлах ✅
+- [x] TipTap редактор (замість BlockNote — більше контролю)
+- [x] Типи блоків: H1/H2/H3, параграф, список, нумерований список, чекліст, цитата, код, роздільник, таблиця
+- [x] Image, Video (кастомний extension з native controls), File attachment
+- [x] Slash menu (`/`) — пошук блоків українською
+- [x] Bubble menu — форматування тексту при виділенні (B, I, S, code, link, H1-3, list, quote)
+- [x] Drag & drop файлів — автоматичне завантаження
+- [x] Paste зображень з буферу
+- [x] Backend upload endpoint (50MB ліміт, volume в Docker)
+- [x] CORP headers для streaming відео
+- [x] Автозбереження з дебаунсом 1.5с
+- [x] Редактор інтегрований в ContactPanel (панель контакту на canvas)
+- [x] Сторінка `/notion` — список сторінок + повноекранний редактор
+- [x] Редагування заголовка сторінки
+- [x] Notion-like dark стилі (typography, selection, hover states)
+- [ ] Вкладені підсторінки (sub_pages) — на потім
 
-### 2.2 Inmail Inbox
-- [ ] Сторінка `/inbox` — список чатів
-- [ ] ChatView компонент (повідомлення по контакту)
-- [ ] Відправка повідомлень через Unipile
-- [ ] Real-time отримання через WebSocket
-- [ ] AI-підказки для відповідей (Claude)
+### 2.2 Inbox (повідомлення)
+- [ ] Сторінка `/inbox` — список чатів по контактах
+- [ ] ChatView компонент — переписка з контактом
+- [ ] Telegram listener — фоновий процес що слухає вхідні повідомлення 24/7
+- [ ] Збереження повідомлень в MongoDB (messages колекція)
+- [ ] Відправка повідомлень через Telegram
+- [ ] Gmail inbox — читання листів по контакту
+- [ ] Відправка листів через Gmail
+- [ ] Real-time через WebSocket (нові повідомлення live)
 - [ ] Фільтри: по платформі, по контакту, прочитані/непрочитані
+- [ ] AI-підказки для відповідей (Claude) — пізніше
 
 ### 2.3 Notifications
 - [ ] Сторінка `/notifications` — центр сповіщень
@@ -183,6 +197,6 @@
 
 ## Поточний статус
 
-**Завершено:** Фаза 1 (інфраструктура, API, auth, 3D canvas, Telegram, Gmail, LinkedIn, контакти, CSV)
+**Завершено:** Фаза 1 + 2.1 (інфраструктура, API, auth, 3D canvas, Telegram, Gmail, LinkedIn, контакти, Notion-редактор TipTap)
 **Залишилось у Фазі 1.6:** Instagram OAuth (потребує Meta review)
-**Наступний крок:** Фаза 2 (Notion-редактор, Inbox з Telegram повідомленнями, Notifications)
+**Наступний крок:** Фаза 2.2 — Inbox з Telegram listener + Gmail messages

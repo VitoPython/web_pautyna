@@ -8,6 +8,18 @@ from app.models.page import PageCreate, PageUpdate
 router = APIRouter(prefix="/pages", tags=["pages"])
 
 
+@router.get("")
+async def list_pages(user_id: str = Depends(get_current_user_id)):
+    db = get_db()
+    pages = await db.pages.find(
+        {"owner_id": user_id},
+        {"blocks": 0},  # exclude blocks for list view (too heavy)
+    ).sort("updated_at", -1).to_list(500)
+    for p in pages:
+        p["_id"] = str(p["_id"])
+    return pages
+
+
 @router.get("/{page_id}")
 async def get_page(page_id: str, user_id: str = Depends(get_current_user_id)):
     db = get_db()
@@ -21,7 +33,7 @@ async def get_page(page_id: str, user_id: str = Depends(get_current_user_id)):
 @router.post("", status_code=201)
 async def create_page(data: PageCreate, user_id: str = Depends(get_current_user_id)):
     db = get_db()
-    doc = {"owner_id": user_id, **data.model_dump(), "blocks": []}
+    doc = {"owner_id": user_id, **data.model_dump(), "blocks": None}
     result = await db.pages.insert_one(doc)
     page_id = str(result.inserted_id)
 
@@ -46,8 +58,6 @@ async def create_page(data: PageCreate, user_id: str = Depends(get_current_user_
 async def update_page(page_id: str, data: PageUpdate, user_id: str = Depends(get_current_user_id)):
     db = get_db()
     update = {k: v for k, v in data.model_dump(exclude_none=True).items()}
-    if "blocks" in update:
-        update["blocks"] = [b.model_dump() if hasattr(b, "model_dump") else b for b in update["blocks"]]
     if not update:
         raise HTTPException(status_code=400, detail="No fields to update")
     result = await db.pages.update_one(
