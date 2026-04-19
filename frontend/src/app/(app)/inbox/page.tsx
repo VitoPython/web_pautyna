@@ -55,6 +55,8 @@ export default function InboxPage() {
   const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const setUnreadMessages = useUIStore((s) => s.setUnreadMessages);
 
@@ -163,6 +165,28 @@ export default function InboxPage() {
 
   const isEmailPlatform = !!selectedChat &&
     ["gmail", "google_oauth", "outlook", "email"].includes(selectedChat.platform);
+
+  const suggestReply = async () => {
+    if (!selectedChat || aiLoading) return;
+    setAiLoading(true);
+    setAiSuggestions([]);
+    try {
+      const { data } = await api.post<{ suggestions: string[] }>(
+        "/ai/suggest-reply",
+        { contact_id: selectedChat.contact_id },
+      );
+      setAiSuggestions(data.suggestions || []);
+    } catch (err) {
+      setSendError(getErrorMessage(err, "Не вдалось згенерувати варіанти"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Clear suggestions when the user switches chats.
+  useEffect(() => {
+    setAiSuggestions([]);
+  }, [selectedChat?.contact_id]);
 
   const filteredChats = chats.filter((c) => {
     if (search && !c.contact_name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -361,7 +385,46 @@ export default function InboxPage() {
                   />
                 </div>
               )}
+              {aiSuggestions.length > 0 && (
+                <div className="max-w-3xl mx-auto mb-2 flex flex-wrap gap-1.5">
+                  {aiSuggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => { setDraft(s); setAiSuggestions([]); }}
+                      className="px-3 py-1.5 text-xs bg-violet-500/15 text-violet-200 border border-violet-500/30 rounded-full hover:bg-violet-500/25 transition-colors text-left max-w-full truncate"
+                      title={s}
+                    >
+                      {s.length > 80 ? s.slice(0, 80) + "…" : s}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAiSuggestions([])}
+                    className="px-2 py-1.5 text-xs text-zinc-500 hover:text-zinc-300"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               <div className="flex gap-2 items-end max-w-3xl mx-auto">
+                <button
+                  type="button"
+                  onClick={suggestReply}
+                  disabled={aiLoading || messages.length === 0}
+                  title="Запропонувати відповідь (Claude)"
+                  className="px-3 py-2.5 text-zinc-300 bg-zinc-800 hover:bg-violet-500/20 hover:text-violet-300 border border-zinc-700 hover:border-violet-500/40 rounded-lg transition-colors disabled:opacity-40 shrink-0"
+                >
+                  {aiLoading ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4 animate-spin">
+                      <path d="M21 12a9 9 0 11-6.219-8.56" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                      <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.45 20.73L12 17.27L6.55 20.73L8 14.14L3 9.27L9.61 8.26L12 2z" />
+                    </svg>
+                  )}
+                </button>
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}

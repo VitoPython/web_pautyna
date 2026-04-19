@@ -1,6 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
+import api from "@/lib/api";
 import { useContactPage } from "@/hooks/useContactPage";
 import type { GraphNode } from "./WebCanvas";
 
@@ -22,6 +24,35 @@ const PLATFORM_INFO: Record<string, { label: string; color: string }> = {
 export default function ContactPanel({ contact, onClose, onDelete }: ContactPanelProps) {
   const contactId = contact.isCenter ? null : contact.id;
   const { page, loading: pageLoading, saving, saveBlocks } = useContactPage(contactId);
+
+  const [summary, setSummary] = useState("");
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Pull existing summary when the panel opens for a contact.
+  useEffect(() => {
+    if (!contactId) {
+      setSummary("");
+      return;
+    }
+    let cancelled = false;
+    api.get<{ ai_summary?: string }>(`/contacts/${contactId}`)
+      .then(({ data }) => { if (!cancelled) setSummary(data.ai_summary || ""); })
+      .catch(() => { if (!cancelled) setSummary(""); });
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  const generateSummary = async () => {
+    if (!contactId || summaryLoading) return;
+    setSummaryLoading(true);
+    try {
+      const { data } = await api.post<{ summary: string }>(`/ai/summary/${contactId}`);
+      setSummary(data.summary);
+    } catch {
+      // Silent — UI stays as-is. Surface error elsewhere if needed.
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   if (contact.isCenter) {
     return (
@@ -103,6 +134,32 @@ export default function ContactPanel({ contact, onClose, onDelete }: ContactPane
           </div>
         </div>
       )}
+
+      {/* AI Summary */}
+      <div className="p-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider flex items-center gap-1.5">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-violet-400">
+              <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.45 20.73L12 17.27L6.55 20.73L8 14.14L3 9.27L9.61 8.26L12 2z" />
+            </svg>
+            AI Overview
+          </p>
+          <button
+            onClick={generateSummary}
+            disabled={summaryLoading}
+            className="text-[11px] text-violet-400 hover:text-violet-300 disabled:opacity-50"
+          >
+            {summaryLoading ? "…" : summary ? "Оновити" : "Згенерувати"}
+          </button>
+        </div>
+        {summary ? (
+          <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">{summary}</p>
+        ) : (
+          <p className="text-xs text-zinc-600 italic">
+            Claude згенерує короткий overview на базі нотаток і переписки.
+          </p>
+        )}
+      </div>
 
       {/* Quick Actions */}
       <div className="p-4 border-b border-zinc-800">

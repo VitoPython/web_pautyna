@@ -65,6 +65,15 @@ const NAV_ITEMS = [
     badgeKey: "unreadNotifications" as const,
   },
   {
+    href: "/ai",
+    label: "AI",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5">
+        <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.45 20.73L12 17.27L6.55 20.73L8 14.14L3 9.27L9.61 8.26L12 2z" />
+      </svg>
+    ),
+  },
+  {
     href: "/notion",
     label: "Notion",
     icon: (

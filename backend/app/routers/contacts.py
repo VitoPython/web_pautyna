@@ -65,6 +65,9 @@ async def get_contact(contact_id: str, user_id: str = Depends(get_current_user_i
         raise HTTPException(status_code=404, detail="Contact not found")
     contact["_id"] = str(contact["_id"])
     _fill_unipile_avatar(contact)
+    # Surface AI summary fields if present.
+    if "ai_summary" not in contact:
+        contact["ai_summary"] = ""
     return contact
 
 
