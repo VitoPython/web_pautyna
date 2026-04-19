@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     # Used to build URLs that external services (Unipile webhooks, OAuth
     # redirects) call back to. In prod set to the public HTTPS origin.
     PUBLIC_URL: str = "http://localhost"
+    ENVIRONMENT: str = "dev"  # dev | prod
 
     # MongoDB
     MONGODB_URI: str = "mongodb://mongodb:27017"
@@ -21,18 +22,12 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # Cookie
-    COOKIE_SECURE: bool = False  # True in production (HTTPS)
+    # Cookie — True in production so browsers only send it over HTTPS.
+    COOKIE_SECURE: bool = False
 
-    # Google OAuth
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "http://localhost/api/v1/gmail/callback"
-
-    # LinkedIn OAuth
-    LINKEDIN_CLIENT_ID: str = ""
-    LINKEDIN_CLIENT_SECRET: str = ""
-    LINKEDIN_REDIRECT_URI: str = "http://localhost/api/v1/linkedin/callback"
+    # CORS — comma-separated origins allowed to hit the API. In prod this
+    # must be the public URL only; "*" is reserved for local dev.
+    CORS_ORIGINS: str = "*"
 
     # Telegram
     TELEGRAM_API_ID: int = 0
@@ -53,3 +48,16 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Fail-fast in production — refuse to boot with the default JWT secret.
+# This prevents accidentally shipping a server anyone can forge tokens for.
+if settings.ENVIRONMENT == "prod":
+    if settings.JWT_SECRET == "change-me-in-production" or len(settings.JWT_SECRET) < 32:
+        raise RuntimeError(
+            "JWT_SECRET must be a random 32+ char string in production. "
+            "Generate with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+    if not settings.PUBLIC_URL.startswith("https://"):
+        raise RuntimeError(
+            f"PUBLIC_URL must be https:// in production (got {settings.PUBLIC_URL!r})"
+        )

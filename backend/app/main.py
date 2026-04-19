@@ -35,9 +35,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# In prod CORS_ORIGINS must list the public HTTPS origin(s); in dev we keep
+# a permissive default so the local frontend + nginx work without extra config.
+_cors_raw = (settings.CORS_ORIGINS or "").strip()
+if settings.ENVIRONMENT == "prod":
+    _allowed = [o.strip() for o in _cors_raw.split(",") if o.strip()] or [settings.PUBLIC_URL]
+else:
+    _allowed = (
+        [o.strip() for o in _cors_raw.split(",") if o.strip() and o.strip() != "*"]
+        or ["http://localhost", "http://localhost:3000", "http://frontend:3000"]
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost", "http://localhost:3000", "http://frontend:3000"],
+    allow_origins=_allowed,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
