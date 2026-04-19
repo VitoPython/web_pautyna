@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -59,6 +60,9 @@ export default function InboxPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const setUnreadMessages = useUIStore((s) => s.setUnreadMessages);
+  const searchParams = useSearchParams();
+  const contactParam = searchParams?.get("contact") || "";
+  const autoSelectedRef = useRef(false);
 
   const loadChats = useCallback(async () => {
     try {
@@ -94,6 +98,17 @@ export default function InboxPage() {
   }, [loadMessages, loadChats]);
 
   useEffect(() => { loadChats(); }, [loadChats]);
+
+  // Auto-select chat when coming from an external link (e.g. Canvas "send" action).
+  // Runs once per session: first time chats arrive and the `?contact=<id>` matches a chat.
+  useEffect(() => {
+    if (!contactParam || autoSelectedRef.current || chats.length === 0) return;
+    const match = chats.find((c) => c.contact_id === contactParam);
+    if (match) {
+      setSelectedChat(match);
+      autoSelectedRef.current = true;
+    }
+  }, [contactParam, chats]);
 
   // WebSocket for real-time updates
   useWebSocket((event) => {

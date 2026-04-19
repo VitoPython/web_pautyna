@@ -16,18 +16,26 @@ interface UnipileAccount {
 }
 
 const PROVIDERS = [
-  { code: "TELEGRAM", label: "Telegram", cls: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
-  { code: "LINKEDIN", label: "LinkedIn", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
-  { code: "GOOGLE", label: "Gmail", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-  { code: "INSTAGRAM", label: "Instagram", cls: "bg-pink-500/15 text-pink-400 border-pink-500/30" },
-  { code: "WHATSAPP", label: "WhatsApp", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
-  { code: "GOOGLE_CALENDAR", label: "Google Calendar", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-  { code: "OUTLOOK", label: "Outlook", cls: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" },
+  { code: "TELEGRAM", label: "Telegram", hint: "DM та групи", cls: "bg-sky-500/15 text-sky-400 border-sky-500/30" },
+  { code: "LINKEDIN", label: "LinkedIn", hint: "Повідомлення", cls: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
+  { code: "GOOGLE", label: "Gmail + Calendar", hint: "Один OAuth", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+  { code: "INSTAGRAM", label: "Instagram", hint: "DM", cls: "bg-pink-500/15 text-pink-400 border-pink-500/30" },
+  { code: "WHATSAPP", label: "WhatsApp", hint: "Повідомлення", cls: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" },
+  { code: "MICROSOFT", label: "Outlook + Calendar", hint: "Один OAuth", cls: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" },
 ];
+
+// Map Unipile's remote `type` values back to our tile codes for the badge pill.
+const REMOTE_TYPE_ALIASES: Record<string, string> = {
+  google_oauth: "GOOGLE",
+  gmail: "GOOGLE",
+  microsoft_oauth: "MICROSOFT",
+  outlook: "MICROSOFT",
+};
 
 function providerMeta(code: string) {
   const norm = (code || "").toUpperCase();
-  return PROVIDERS.find((p) => p.code === norm) || { code: norm, label: code || "Unknown", cls: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30" };
+  const canonical = REMOTE_TYPE_ALIASES[(code || "").toLowerCase()] || norm;
+  return PROVIDERS.find((p) => p.code === canonical) || { code: canonical, label: code || "Unknown", cls: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30" };
 }
 
 function formatDate(iso?: string | null) {
@@ -146,6 +154,7 @@ export default function IntegrationsPage() {
                 className={`p-4 rounded-xl border text-left transition-colors hover:border-violet-500/40 hover:bg-violet-500/5 disabled:opacity-50 ${p.cls}`}
               >
                 <div className="text-sm font-medium">{p.label}</div>
+                <div className="text-[11px] opacity-70 mt-0.5">{p.hint}</div>
                 <div className="text-[11px] opacity-70 mt-1">
                   {connecting === p.code ? "Генеруємо посилання…" : "Connect →"}
                 </div>

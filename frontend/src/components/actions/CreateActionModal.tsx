@@ -15,6 +15,7 @@ interface Contact {
 interface CreateActionModalProps {
   onClose: () => void;
   onCreated: () => void;
+  initialContactId?: string;
 }
 
 type TriggerKind = "schedule" | "no_reply" | "manual";
@@ -29,10 +30,10 @@ const CRON_PRESETS: { key: string; label: string; cron: string }[] = [
   { key: "monthly1", label: "1-го числа 09:00", cron: "0 9 1 * *" },
 ];
 
-export default function CreateActionModal({ onClose, onCreated }: CreateActionModalProps) {
+export default function CreateActionModal({ onClose, onCreated, initialContactId }: CreateActionModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [contactId, setContactId] = useState<string>("");
+  const [contactId, setContactId] = useState<string>(initialContactId || "");
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [contactSearch, setContactSearch] = useState("");
 

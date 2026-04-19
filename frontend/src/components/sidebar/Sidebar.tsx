@@ -103,6 +103,8 @@ export default function Sidebar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const unreadNotifications = useUIStore((s) => s.unreadNotifications);
   const unreadMessages = useUIStore((s) => s.unreadMessages);
+  const soundEnabled = useUIStore((s) => s.soundEnabled);
+  const toggleSound = useUIStore((s) => s.toggleSound);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
@@ -169,6 +171,28 @@ export default function Sidebar() {
             )}
           </div>
         )}
+        <button
+          onClick={toggleSound}
+          title={soundEnabled ? "Вимкнути звук нотифікацій" : "Увімкнути звук нотифікацій"}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-violet-300 hover:bg-zinc-800/60 transition-colors w-full ${
+            collapsed ? "justify-center" : ""
+          }`}
+        >
+          {soundEnabled ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </svg>
+          )}
+          {!collapsed && <span>{soundEnabled ? "Звук увімкнено" : "Звук вимкнено"}</span>}
+        </button>
         <button
           onClick={logout}
           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 transition-colors w-full ${

@@ -69,15 +69,20 @@ async def _request(method: str, path: str, **kwargs) -> dict:
 
 # ─── Hosted auth links ───────────────────────────────────────────────
 
+# Unipile only accepts these provider strings for hosted-auth. Calendar access
+# is bundled into GOOGLE/MICROSOFT OAuth — there is no dedicated GOOGLE_CALENDAR
+# provider (using one returns 400 from /hosted/accounts/link).
 PROVIDER_CODES = {
     "telegram": "TELEGRAM",
     "gmail": "GOOGLE",
     "google": "GOOGLE",
+    "google_calendar": "GOOGLE",
     "linkedin": "LINKEDIN",
     "instagram": "INSTAGRAM",
     "whatsapp": "WHATSAPP",
-    "google_calendar": "GOOGLE_CALENDAR",
-    "outlook_calendar": "OUTLOOK",
+    "outlook": "MICROSOFT",
+    "outlook_calendar": "MICROSOFT",
+    "microsoft": "MICROSOFT",
 }
 
 

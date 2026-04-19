@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store";
+import { useUIStore } from "@/stores/ui-store";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { playPing } from "@/lib/sound";
 
 interface Toast {
   id: number;
@@ -27,10 +29,19 @@ export default function Toasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const pathname = usePathname();
   const isAuthed = useAuthStore((s) => !!s.user);
+  const soundEnabled = useUIStore((s) => s.soundEnabled);
+  // Read sound pref via ref to avoid re-subscribing WS on toggle.
+  const soundRef = useRef(soundEnabled);
+  soundRef.current = soundEnabled;
 
   useWebSocket((event) => {
     if (event.type !== "new_message") return;
-    // Skip if user is already looking at inbox — page handles its own UI update.
+
+    // Ping regardless of which page — the user wants to hear inbound chatter
+    // even when they're inside /inbox (they may not have the thread open).
+    if (soundRef.current) playPing();
+
+    // Skip the visual toast if user is already looking at inbox — page handles its own UI update.
     if (pathname.startsWith("/inbox")) return;
 
     const payload = event.payload as {

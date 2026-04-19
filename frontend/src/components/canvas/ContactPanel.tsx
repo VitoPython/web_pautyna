@@ -1,12 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useContactPage } from "@/hooks/useContactPage";
 import type { GraphNode } from "./WebCanvas";
 
 const BlockEditor = dynamic(() => import("@/components/notion/BlockEditor"), { ssr: false });
+const CreateActionModal = dynamic(() => import("@/components/actions/CreateActionModal"), { ssr: false });
 
 interface ContactPanelProps {
   contact: GraphNode;
@@ -24,9 +26,12 @@ const PLATFORM_INFO: Record<string, { label: string; color: string }> = {
 export default function ContactPanel({ contact, onClose, onDelete }: ContactPanelProps) {
   const contactId = contact.isCenter ? null : contact.id;
   const { page, loading: pageLoading, saving, saveBlocks } = useContactPage(contactId);
+  const router = useRouter();
+  const notesRef = useRef<HTMLDivElement>(null);
 
   const [summary, setSummary] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
 
   // Pull existing summary when the panel opens for a contact.
   useEffect(() => {
@@ -165,14 +170,26 @@ export default function ContactPanel({ contact, onClose, onDelete }: ContactPane
       <div className="p-4 border-b border-zinc-800">
         <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Дії</p>
         <div className="flex flex-col gap-2">
-          <ActionBtn icon="mail" label="Надіслати повідомлення" />
-          <ActionBtn icon="note" label="Відкрити нотатки" />
-          <ActionBtn icon="action" label="Створити Action" />
+          <ActionBtn
+            icon="mail"
+            label="Надіслати повідомлення"
+            onClick={() => contactId && router.push(`/inbox?contact=${contactId}`)}
+          />
+          <ActionBtn
+            icon="note"
+            label="Відкрити нотатки"
+            onClick={() => notesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          />
+          <ActionBtn
+            icon="action"
+            label="Створити Action"
+            onClick={() => setActionModalOpen(true)}
+          />
         </div>
       </div>
 
       {/* Notion editor */}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div ref={notesRef} className="flex-1 overflow-auto min-h-0">
         <div className="flex items-center justify-between px-4 pt-4 pb-2 sticky top-0 bg-zinc-900 z-10">
           <p className="text-xs text-zinc-500 uppercase tracking-wider font-medium">Нотатки</p>
           {saving && (
@@ -205,6 +222,14 @@ export default function ContactPanel({ contact, onClose, onDelete }: ContactPane
           </button>
         </div>
       )}
+
+      {actionModalOpen && contactId && (
+        <CreateActionModal
+          initialContactId={contactId}
+          onClose={() => setActionModalOpen(false)}
+          onCreated={() => setActionModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -230,7 +255,7 @@ function DetailIcon({ type }: { type: string }) {
   }
 }
 
-function ActionBtn({ icon, label }: { icon: string; label: string }) {
+function ActionBtn({ icon, label, onClick }: { icon: string; label: string; onClick?: () => void }) {
   const iconEl = icon === "mail"
     ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4"><rect x="2" y="4" width="20" height="16" rx="2" /><polyline points="22,4 12,13 2,4" /></svg>
     : icon === "note"
@@ -238,7 +263,11 @@ function ActionBtn({ icon, label }: { icon: string; label: string }) {
     : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>;
 
   return (
-    <button className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors"
+    >
       {iconEl} {label}
     </button>
   );
