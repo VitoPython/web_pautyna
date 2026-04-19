@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Pavutyna API"
     VERSION: str = "0.1.0"
     API_V1_PREFIX: str = "/api/v1"
+    # Used to build URLs that external services (Unipile webhooks, OAuth
+    # redirects) call back to. In prod set to the public HTTPS origin.
+    PUBLIC_URL: str = "http://localhost"
 
     # MongoDB
     MONGODB_URI: str = "mongodb://mongodb:27017"

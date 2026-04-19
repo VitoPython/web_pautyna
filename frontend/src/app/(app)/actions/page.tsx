@@ -31,6 +31,8 @@ interface Action {
   last_run?: string | null;
   next_run?: string | null;
   run_count: number;
+  end_date?: string | null;
+  max_runs?: number | null;
   created_by_ai?: boolean;
   created_at: string;
 }
@@ -357,10 +359,21 @@ export default function ActionsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-[11px] text-zinc-500">
-                      <span>Запусків: <span className="text-zinc-300">{a.run_count}</span></span>
+                    <div className="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-[11px] text-zinc-500 flex-wrap">
+                      <span>
+                        Запусків:{" "}
+                        <span className="text-zinc-300">
+                          {a.run_count}{a.max_runs ? ` / ${a.max_runs}` : ""}
+                        </span>
+                      </span>
                       <span>Останній: <span className="text-zinc-300">{formatDate(a.last_run)}</span></span>
                       <span>Наступний: <span className="text-zinc-300">{formatDate(a.next_run)}</span></span>
+                      {a.end_date && (
+                        <span>
+                          Зупиниться:{" "}
+                          <span className="text-zinc-300">{formatDate(a.end_date)}</span>
+                        </span>
+                      )}
                     </div>
                   </div>
                 );

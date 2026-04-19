@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import close_db, connect_db
-from app.routers import actions, auth, canvas, contacts, gmail, integrations, linkedin, messages, notifications, pages, telegram, uploads, webhooks
+from app.routers import actions, auth, canvas, contacts, integrations, messages, notifications, pages, unipile, uploads, webhooks
 from app.services.websocket_manager import ws_manager
 
 
@@ -13,6 +13,17 @@ from app.services.websocket_manager import ws_manager
 async def lifespan(app: FastAPI):
     await connect_db()
     await ws_manager.start_redis_listener()
+    # Register our webhook with Unipile. Non-fatal if it fails — the user
+    # can retry from /integrations once credentials are valid.
+    if settings.UNIPILE_API_KEY and settings.UNIPILE_DSN:
+        import logging
+        from app.services import unipile_service
+        try:
+            await unipile_service.ensure_webhooks(
+                f"{settings.PUBLIC_URL.rstrip('/')}/webhooks/unipile"
+            )
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Unipile webhook setup skipped: {e}")
     yield
     await ws_manager.stop_redis_listener()
     await close_db()
@@ -41,10 +52,8 @@ app.include_router(actions.router, prefix=settings.API_V1_PREFIX)
 app.include_router(messages.router, prefix=settings.API_V1_PREFIX)
 app.include_router(notifications.router, prefix=settings.API_V1_PREFIX)
 app.include_router(integrations.router, prefix=settings.API_V1_PREFIX)
-app.include_router(telegram.router, prefix=settings.API_V1_PREFIX)
-app.include_router(gmail.router, prefix=settings.API_V1_PREFIX)
-app.include_router(linkedin.router, prefix=settings.API_V1_PREFIX)
 app.include_router(uploads.router, prefix=settings.API_V1_PREFIX)
+app.include_router(unipile.router, prefix=settings.API_V1_PREFIX)
 app.include_router(webhooks.router)  # public, no /api/v1 prefix (external callers)
 
 

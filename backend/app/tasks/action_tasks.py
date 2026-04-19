@@ -41,8 +41,15 @@ def _run(coro):
 # ─── Step dispatchers ────────────────────────────────────────────────
 
 async def _step_send_message(db, action, step):
-    """Send a message to the action's target contact via platform."""
-    from app.services import gmail_service, telegram_service
+    """Send a message to the action's target contact via Unipile.
+
+    Dispatch by platform kind:
+      - chat platforms (telegram/linkedin/instagram/whatsapp): use the contact's
+        Unipile chat_id to post a message.
+      - email (gmail/outlook): find the contact's Unipile email-account linkage
+        and send through the email endpoint.
+    """
+    from app.services import unipile_service
 
     contact_id = action.get("contact_id")
     if not contact_id:
@@ -52,28 +59,56 @@ async def _step_send_message(db, action, step):
     if not contact:
         raise ValueError(f"Contact {contact_id} not found")
 
-    platform = step.get("platform") or "telegram"
+    platform = (step.get("platform") or "").lower()
     content = step.get("content", "")
     if not content:
         raise ValueError("send_message step requires content")
 
+    chat_platforms = {"telegram", "linkedin", "instagram", "whatsapp"}
+    email_platforms = {"gmail", "google_oauth", "outlook", "email"}
+
     external_id = ""
-    if platform == "telegram":
-        tg_profile = next(
-            (p for p in contact.get("platforms", []) if p.get("type") == "telegram"),
+
+    if platform in chat_platforms or not platform:
+        # Prefer a chat_id matching platform; fall back to any chat platform.
+        plat = next(
+            (p for p in contact.get("platforms", [])
+             if p.get("chat_id") and (not platform or p.get("type") == platform)),
+            None,
+        ) or next(
+            (p for p in contact.get("platforms", []) if p.get("chat_id")),
             None,
         )
-        if not tg_profile:
-            raise ValueError("Contact has no Telegram profile")
-        result = await telegram_service.send_message(action["owner_id"], tg_profile["profile_id"], content)
-        external_id = str(result.get("message_id", ""))
-    elif platform == "gmail":
-        if not contact.get("email"):
-            raise ValueError("Contact has no email")
-        result = await gmail_service.send_message(
-            action["owner_id"], contact["email"], "", content
+        if not plat:
+            raise ValueError("Contact has no Unipile chat — cannot send message")
+        result = await unipile_service.send_message(chat_id=plat["chat_id"], text=content)
+        external_id = str(result.get("id") or result.get("message_id") or "")
+        platform = plat.get("type", platform)
+
+    elif platform in email_platforms:
+        email_addr = contact.get("email") or next(
+            (p.get("profile_id") for p in contact.get("platforms", [])
+             if "@" in (p.get("profile_id") or "")),
+            "",
         )
-        external_id = result.get("id", "")
+        if not email_addr:
+            raise ValueError("Contact has no email address")
+        email_plat = next(
+            (p for p in contact.get("platforms", [])
+             if (p.get("type") or "").lower() in email_platforms and p.get("account_id")),
+            None,
+        )
+        if not email_plat:
+            raise ValueError("Contact has no email Unipile account linkage")
+        subject = step.get("subject") or f"From {action.get('name', 'Pavutyna Action')}"
+        result = await unipile_service.send_email(
+            account_id=email_plat["account_id"],
+            to=[email_addr],
+            subject=subject,
+            body=content,
+        )
+        external_id = str(result.get("id") or result.get("message_id") or "")
+
     else:
         raise ValueError(f"Unsupported platform: {platform}")
 
@@ -84,7 +119,7 @@ async def _step_send_message(db, action, step):
         "platform": platform,
         "direction": "outbound",
         "content": content,
-        "subject": "",
+        "subject": step.get("subject", ""),
         "media_urls": [],
         "external_id": external_id,
         "read": True,
@@ -143,6 +178,17 @@ _STEP_DISPATCH = {
 
 # ─── Core execution ──────────────────────────────────────────────────
 
+def _is_exhausted(action: dict, now: datetime) -> tuple[bool, str]:
+    """Return (True, reason) if the action should stop, else (False, '')."""
+    end_date = action.get("end_date")
+    if end_date and end_date <= now:
+        return True, "end_date reached"
+    max_runs = action.get("max_runs")
+    if max_runs and action.get("run_count", 0) >= max_runs:
+        return True, "max_runs reached"
+    return False, ""
+
+
 async def _execute_action_async(action_id: str) -> dict:
     db = get_db()
     action = await db.actions.find_one({"_id": ObjectId(action_id)})
@@ -151,6 +197,15 @@ async def _execute_action_async(action_id: str) -> dict:
 
     if action.get("status") != "active":
         return {"skipped": True, "reason": f"status={action.get('status')}"}
+
+    # Refuse to run if stop conditions are already satisfied. Also flip
+    # status so the scheduler stops picking it up.
+    exhausted, reason = _is_exhausted(action, datetime.utcnow())
+    if exhausted:
+        await db.actions.update_one(
+            {"_id": action["_id"]}, {"$set": {"status": "completed", "next_run": None}}
+        )
+        return {"skipped": True, "reason": reason}
 
     results = []
     steps = sorted(action.get("steps", []), key=lambda s: s.get("order", 0))
@@ -169,23 +224,37 @@ async def _execute_action_async(action_id: str) -> dict:
         result = await handler(db, action, step)
         results.append({"type": step_type, "result": result})
 
+    now = datetime.utcnow()
+    new_run_count = action.get("run_count", 0) + 1
+
     # Compute next_run for recurring schedule triggers.
     next_run = None
     trigger = action.get("trigger") or {}
     if trigger.get("type") == "schedule" and trigger.get("cron"):
         try:
-            next_run = croniter(trigger["cron"], datetime.utcnow()).get_next(datetime)
+            next_run = croniter(trigger["cron"], now).get_next(datetime)
         except Exception:
             pass
 
-    update = {
-        "last_run": datetime.utcnow(),
-        "run_count": action.get("run_count", 0) + 1,
-    }
-    if next_run:
+    update: dict = {"last_run": now, "run_count": new_run_count}
+
+    # Stop conditions after this run? Mark completed.
+    max_runs = action.get("max_runs")
+    end_date = action.get("end_date")
+    hit_max = max_runs and new_run_count >= max_runs
+    hit_end = end_date and next_run and next_run >= end_date
+    hit_end_now = end_date and end_date <= now
+
+    if hit_max or hit_end or hit_end_now:
+        update["status"] = "completed"
+        update["next_run"] = None
+    elif next_run:
         update["next_run"] = next_run
     else:
-        update["status"] = "completed" if trigger.get("type") != "event" else action.get("status")
+        # One-shot (manual trigger or non-recurring schedule) — mark completed
+        # unless it's an event-driven trigger which stays active.
+        if trigger.get("type") != "event":
+            update["status"] = "completed"
 
     await db.actions.update_one({"_id": action["_id"]}, {"$set": update})
     return {"action_id": action_id, "steps": results}
@@ -246,6 +315,14 @@ async def _scheduler_tick():
 
     count = 0
     async for action in cursor:
+        # Auto-complete actions that hit their stop conditions between runs.
+        exhausted, _ = _is_exhausted(action, now)
+        if exhausted:
+            await db.actions.update_one(
+                {"_id": action["_id"]}, {"$set": {"status": "completed", "next_run": None}}
+            )
+            continue
+
         # If next_run is missing and we have a cron, compute it now rather
         # than firing immediately — avoids runaway execution on first boot.
         cron = (action.get("trigger") or {}).get("cron")
@@ -332,62 +409,41 @@ def follow_up_checker():
 # ─── Periodic: contact sync ──────────────────────────────────────────
 
 async def _sync_contacts_tick():
-    """For every user with Telegram connected, refresh contact avatars/usernames.
+    """Refresh contact names from Unipile chats for every connected account.
 
-    Intentionally lightweight — just updates names/usernames in bulk.
-    Full message history sync is still on-demand via /messages/contact/{id}/sync.
+    We iterate `/chats` for each account — the chat.name field follows
+    platform-side renames — and update matching contacts in bulk. Cheap
+    enough to run every 15 min without rate-limit concerns.
     """
-    from telethon import TelegramClient
-    from telethon.sessions import StringSession
-    from telethon.tl.functions.contacts import GetContactsRequest
-    from telethon.tl.types import User as TgUser
-
-    from app.core.config import settings
+    from app.services import unipile_service
 
     db = get_db()
     updated = 0
 
-    async for user in db.users.find({"integrations.telegram.connected": True}):
-        session_str = user.get("integrations", {}).get("telegram", {}).get("session", "")
-        if not session_str:
-            continue
-
-        client = TelegramClient(
-            StringSession(session_str),
-            settings.TELEGRAM_API_ID,
-            settings.TELEGRAM_API_HASH,
-            receive_updates=False,
-        )
-        try:
-            await client.connect()
-            if not await client.is_user_authorized():
+    async for user in db.users.find({"integrations.unipile.accounts.0": {"$exists": True}}):
+        user_id = str(user["_id"])
+        accounts = user.get("integrations", {}).get("unipile", {}).get("accounts", []) or []
+        for acc in accounts:
+            account_id = acc.get("account_id")
+            if not account_id:
                 continue
-            result = await client(GetContactsRequest(hash=0))
-            for tg_user in result.users:
-                if not isinstance(tg_user, TgUser) or tg_user.bot:
+            try:
+                data = await unipile_service.list_chats(account_id=account_id, limit=200)
+            except Exception as e:
+                log.warning(f"Unipile list_chats failed for {account_id}: {e}")
+                continue
+            for chat in data.get("items", []):
+                if chat.get("type") != 0:
                     continue
-                name = f"{tg_user.first_name or ''} {tg_user.last_name or ''}".strip()
-                username = tg_user.username or ""
+                chat_id = chat.get("id")
+                name = chat.get("name") or ""
+                if not chat_id or not name:
+                    continue
                 res = await db.contacts.update_one(
-                    {
-                        "owner_id": str(user["_id"]),
-                        "platforms.type": "telegram",
-                        "platforms.profile_id": str(tg_user.id),
-                    },
-                    {"$set": {
-                        "name": name,
-                        "platforms.$.profile_url": f"https://t.me/{username}" if username else "",
-                    }},
+                    {"owner_id": user_id, "platforms.chat_id": chat_id, "name": {"$ne": name}},
+                    {"$set": {"name": name}},
                 )
                 updated += res.modified_count
-        except Exception as e:
-            log.warning(f"sync_contacts failed for user {user['_id']}: {e}")
-        finally:
-            try:
-                await client.disconnect()
-            except Exception:
-                pass
-
     return updated
 
 

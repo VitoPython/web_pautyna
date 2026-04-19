@@ -46,6 +46,9 @@ export default function CreateActionModal({ onClose, onCreated }: CreateActionMo
   const [content, setContent] = useState("");
   const [delayMinutes, setDelayMinutes] = useState(0);
 
+  const [endDate, setEndDate] = useState("");   // datetime-local value
+  const [maxRuns, setMaxRuns] = useState<string>("");  // string so empty → unlimited
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -115,15 +118,25 @@ export default function CreateActionModal({ onClose, onCreated }: CreateActionMo
     };
     if (needsPlatform) step.platform = platform;
 
+    const payload: Record<string, unknown> = {
+      name: name.trim(),
+      description: description.trim(),
+      contact_id: needsContact ? contactId : null,
+      trigger,
+      steps: [step],
+    };
+    if (endDate) {
+      // datetime-local returns local time; browser adds the user's offset on Date()
+      payload.end_date = new Date(endDate).toISOString();
+    }
+    const maxRunsNum = Number(maxRuns);
+    if (maxRuns && maxRunsNum > 0) {
+      payload.max_runs = maxRunsNum;
+    }
+
     setSubmitting(true);
     try {
-      await api.post("/actions", {
-        name: name.trim(),
-        description: description.trim(),
-        contact_id: needsContact ? contactId : null,
-        trigger,
-        steps: [step],
-      });
+      await api.post("/actions", payload);
       onCreated();
       onClose();
     } catch (err) {
@@ -355,6 +368,38 @@ export default function CreateActionModal({ onClose, onCreated }: CreateActionMo
               />
               <span className="text-xs text-zinc-500">хв</span>
             </div>
+          </div>
+
+          {/* Stop conditions (optional) */}
+          <div>
+            <label className="block text-sm text-zinc-400 mb-2">Зупинити (опційно)</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <p className="text-[11px] text-zinc-500 mb-1">До дати</p>
+                <input
+                  type="datetime-local"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-violet-500 text-sm"
+                />
+              </div>
+              <div>
+                <p className="text-[11px] text-zinc-500 mb-1">Макс. запусків</p>
+                <input
+                  type="number"
+                  min={1}
+                  value={maxRuns}
+                  onChange={(e) => setMaxRuns(e.target.value)}
+                  placeholder="без ліміту"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-600 focus:outline-none focus:border-violet-500 text-sm"
+                />
+              </div>
+            </div>
+            {(endDate || maxRuns) && (
+              <p className="text-[11px] text-zinc-500 mt-1.5">
+                Action автоматично перейде у «завершено» коли досягне будь-якої з умов.
+              </p>
+            )}
           </div>
 
           {error && (

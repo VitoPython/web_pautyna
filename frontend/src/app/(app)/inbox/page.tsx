@@ -5,6 +5,7 @@ import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useUIStore } from "@/stores/ui-store";
+import ChatAvatar from "@/components/ChatAvatar";
 
 interface Chat {
   contact_id: string;
@@ -31,11 +32,14 @@ interface Message {
 const PLATFORM_BADGE: Record<string, { label: string; cls: string; color: string }> = {
   telegram: { label: "Telegram", cls: "bg-sky-500/15 text-sky-400", color: "#38bdf8" },
   gmail: { label: "Gmail", cls: "bg-red-500/15 text-red-400", color: "#f87171" },
+  google_oauth: { label: "Gmail", cls: "bg-red-500/15 text-red-400", color: "#f87171" },
+  outlook: { label: "Outlook", cls: "bg-indigo-500/15 text-indigo-400", color: "#818cf8" },
   linkedin: { label: "LinkedIn", cls: "bg-blue-500/15 text-blue-400", color: "#60a5fa" },
   instagram: { label: "Instagram", cls: "bg-pink-500/15 text-pink-400", color: "#f472b6" },
+  whatsapp: { label: "WhatsApp", cls: "bg-emerald-500/15 text-emerald-400", color: "#34d399" },
 };
 
-type PlatformFilter = "all" | "telegram" | "gmail" | "linkedin" | "instagram";
+type PlatformFilter = "all" | "telegram" | "gmail" | "google_oauth" | "outlook" | "linkedin" | "instagram" | "whatsapp";
 
 export default function InboxPage() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -48,6 +52,7 @@ export default function InboxPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -112,6 +117,27 @@ export default function InboxPage() {
     syncMessages(selectedChat.contact_id);
   }, [selectedChat?.contact_id]); // eslint-disable-line
 
+  // Interim polling — real-time via Unipile requires webhooks (public URL).
+  // On localhost we fall back to polling: chat list every 20s and the open
+  // chat every 8s. Remove once ngrok/public URL is configured.
+  useEffect(() => {
+    const listTimer = setInterval(() => { loadChats(); }, 10000);
+    return () => clearInterval(listTimer);
+  }, [loadChats]);
+
+  useEffect(() => {
+    if (!selectedChat) return;
+    const id = selectedChat.contact_id;
+    const msgTimer = setInterval(() => {
+      // Sync instead of plain loadMessages — pulls fresh from Unipile.
+      api.post(`/messages/contact/${id}/sync`)
+        .then(() => api.get(`/messages/contact/${id}`))
+        .then(({ data }) => setMessages(data))
+        .catch(() => {});
+    }, 8000);
+    return () => clearInterval(msgTimer);
+  }, [selectedChat?.contact_id]); // eslint-disable-line
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChat || !draft.trim()) return;
@@ -122,8 +148,10 @@ export default function InboxPage() {
         contact_id: selectedChat.contact_id,
         platform: selectedChat.platform,
         content: draft,
+        subject: emailSubject,
       });
       setDraft("");
+      setEmailSubject("");
       await loadMessages(selectedChat.contact_id);
       await loadChats();
     } catch (err: unknown) {
@@ -132,6 +160,9 @@ export default function InboxPage() {
       setSending(false);
     }
   };
+
+  const isEmailPlatform = !!selectedChat &&
+    ["gmail", "google_oauth", "outlook", "email"].includes(selectedChat.platform);
 
   const filteredChats = chats.filter((c) => {
     if (search && !c.contact_name.toLowerCase().includes(search.toLowerCase())) return false;
@@ -223,13 +254,7 @@ export default function InboxPage() {
                       isActive ? "bg-zinc-800/60" : "hover:bg-zinc-900/60"
                     }`}
                   >
-                    {chat.contact_avatar ? (
-                      <img src={chat.contact_avatar} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                        {chat.contact_name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <ChatAvatar url={chat.contact_avatar} name={chat.contact_name} size="lg" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-0.5">
                         <p className={`text-sm truncate ${isUnread ? "font-semibold text-white" : "font-medium text-zinc-200"}`}>
@@ -278,13 +303,7 @@ export default function InboxPage() {
             {/* Chat header */}
             <div className="flex items-center justify-between px-6 h-14 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
-                {selectedChat.contact_avatar ? (
-                  <img src={selectedChat.contact_avatar} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" referrerPolicy="no-referrer" />
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                    {selectedChat.contact_name.charAt(0).toUpperCase()}
-                  </div>
-                )}
+                <ChatAvatar url={selectedChat.contact_avatar} name={selectedChat.contact_name} size="sm" />
                 <div className="min-w-0">
                   <p className="text-white font-semibold truncate">{selectedChat.contact_name}</p>
                   <p className="text-xs text-zinc-500">
@@ -330,6 +349,17 @@ export default function InboxPage() {
             <form onSubmit={handleSend} className="p-4 border-t border-zinc-800 shrink-0">
               {sendError && (
                 <p className="text-red-400 text-sm mb-2">{sendError}</p>
+              )}
+              {isEmailPlatform && (
+                <div className="max-w-3xl mx-auto mb-2">
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Тема листа"
+                    className="w-full px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-white text-sm placeholder-zinc-600 focus:outline-none focus:border-violet-500"
+                  />
+                </div>
               )}
               <div className="flex gap-2 items-end max-w-3xl mx-auto">
                 <textarea

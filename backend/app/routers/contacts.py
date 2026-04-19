@@ -11,12 +11,25 @@ from app.models.contact import ContactCreate, ContactUpdate
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
+def _fill_unipile_avatar(contact: dict) -> None:
+    """If the contact has a Unipile attendee but no uploaded avatar, point
+    its avatar_url at our proxy so the canvas + list can show the photo
+    without storing binaries in Mongo."""
+    if contact.get("avatar_url"):
+        return
+    for p in contact.get("platforms", []):
+        if p.get("attendee_id") and p.get("account_id"):
+            contact["avatar_url"] = f"/api/v1/unipile/avatar/{contact['_id']}"
+            return
+
+
 @router.get("")
 async def list_contacts(user_id: str = Depends(get_current_user_id)):
     db = get_db()
     contacts = await db.contacts.find({"owner_id": user_id}).to_list(1000)
     for c in contacts:
         c["_id"] = str(c["_id"])
+        _fill_unipile_avatar(c)
     return contacts
 
 
@@ -51,6 +64,7 @@ async def get_contact(contact_id: str, user_id: str = Depends(get_current_user_i
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     contact["_id"] = str(contact["_id"])
+    _fill_unipile_avatar(contact)
     return contact
 
 

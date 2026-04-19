@@ -155,6 +155,16 @@
 - [x] Webhook endpoint для Unipile (`/webhooks/unipile`) — signature TODO
 - [x] Celery beat schedule: actions_scheduler (1 min), follow_up_checker (hourly), sync_contacts_all (15 min)
 
+### 2.5 Міграція на Unipile (повний рефакторинг)
+- [x] Unipile service + hosted-link flow + /integrations UI
+- [x] /messages refactor: chats + messages + send через Unipile
+- [x] Auto-create contacts from Unipile chats
+- [x] Avatars from Unipile chat_attendees (проксі endpoint)
+- [x] Gmail inbox: emails as chats (grouped by sender), email subject поле у composer
+- [x] Видалено Telethon, Google API, `tg-listener` worker, legacy роутери (telegram/gmail/linkedin)
+- [x] Polling fallback на dev (без webhook)
+- [ ] Webhook production ready (ngrok / public URL / signature verification)
+
 ---
 
 ## Фаза 3 — AI & Actions

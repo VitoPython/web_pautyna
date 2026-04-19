@@ -16,23 +16,71 @@ async def get_integrations_status(user_id: str = Depends(get_current_user_id)):
     db = get_db()
     user = await db.users.find_one({"_id": __import__("bson").ObjectId(user_id)})
     integrations = user.get("integrations", {}) if user else {}
+    unipile_accounts = integrations.get("unipile", {}).get("accounts", [])
+
+    def _has(provider: str) -> bool:
+        return any(a.get("provider", "").lower() == provider and a.get("status") != "disconnected"
+                   for a in unipile_accounts)
 
     return {
-        "gmail": {
-            "connected": bool(integrations.get("gmail", {}).get("connected")),
-            "email": integrations.get("gmail", {}).get("email", ""),
-        },
-        "telegram": {
-            "connected": bool(integrations.get("telegram", {}).get("connected")),
-            "phone": integrations.get("telegram", {}).get("phone", ""),
-        },
-        "linkedin": {
-            "connected": bool(integrations.get("linkedin", {}).get("connected")),
-            "name": integrations.get("linkedin", {}).get("name", ""),
-        },
-        "instagram": {
-            "connected": bool(integrations.get("instagram", {}).get("connected")),
-            "username": integrations.get("instagram", {}).get("username", ""),
+        "unipile_accounts": len(unipile_accounts),
+        "gmail": {"connected": _has("google") or _has("gmail")},
+        "telegram": {"connected": _has("telegram")},
+        "linkedin": {"connected": _has("linkedin")},
+        "instagram": {"connected": _has("instagram")},
+        "whatsapp": {"connected": _has("whatsapp")},
+        "calendar": {"connected": _has("google_calendar") or _has("outlook")},
+    }
+
+
+@router.post("/wipe-legacy")
+async def wipe_legacy_integrations(user_id: str = Depends(get_current_user_id)):
+    """One-way migration: nuke the Telethon/Google-direct integration data
+    and all user-owned contacts/messages/notifications/pages/canvas nodes.
+
+    Called once after switching to Unipile. Keeps the user account itself and
+    any newly-connected Unipile accounts.
+    """
+    db = get_db()
+    from bson import ObjectId
+    uid = ObjectId(user_id)
+
+    # Count what we're about to delete so the UI can show a summary.
+    contacts_n = await db.contacts.count_documents({"owner_id": user_id})
+    messages_n = await db.messages.count_documents({"owner_id": user_id})
+    notifs_n = await db.notifications.count_documents({"owner_id": user_id})
+    pages_n = await db.pages.count_documents({"owner_id": user_id})
+
+    await db.contacts.delete_many({"owner_id": user_id})
+    await db.messages.delete_many({"owner_id": user_id})
+    await db.notifications.delete_many({"owner_id": user_id})
+    await db.pages.delete_many({"owner_id": user_id})
+    await db.actions.delete_many({"owner_id": user_id})
+    await db.failed_actions.delete_many({"owner_id": user_id})
+
+    # Reset the user's canvas (keep the doc, clear nodes).
+    await db.canvases.update_one(
+        {"owner_id": user_id},
+        {"$set": {"nodes": []}},
+    )
+
+    # Strip legacy per-platform integration data; preserve unipile subdoc.
+    existing_unipile = {}
+    user = await db.users.find_one({"_id": uid})
+    if user:
+        existing_unipile = user.get("integrations", {}).get("unipile", {})
+
+    await db.users.update_one(
+        {"_id": uid},
+        {"$set": {"integrations": {"unipile": existing_unipile} if existing_unipile else {}}},
+    )
+
+    return {
+        "wiped": {
+            "contacts": contacts_n,
+            "messages": messages_n,
+            "notifications": notifs_n,
+            "pages": pages_n,
         },
     }
 

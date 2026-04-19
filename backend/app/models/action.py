@@ -30,6 +30,10 @@ class Action(BaseModel):
     last_run: datetime | None = None
     next_run: datetime | None = None
     run_count: int = 0
+    # Optional stop conditions. If either is set and reached, the action
+    # transitions to status="completed" and is no longer scheduled.
+    end_date: datetime | None = None
+    max_runs: int | None = None
     created_by_ai: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -40,6 +44,8 @@ class ActionCreate(BaseModel):
     contact_id: str | None = None
     trigger: ActionTrigger = ActionTrigger()
     steps: list[ActionStep] = []
+    end_date: datetime | None = None
+    max_runs: int | None = None
 
 
 class ActionGenerate(BaseModel):

@@ -30,6 +30,12 @@ export default function UnreadBadgesLoader() {
   useEffect(() => {
     if (!isAuthed) return;
     refresh();
+    // Polling fallback for when WS events can't reach us (local dev
+    // without public URL). Once ngrok/production webhook is wired, the
+    // WS handler below will fire within a second and this is just a
+    // safety net for when the socket is down.
+    const t = setInterval(() => { refresh(); }, 15000);
+    return () => clearInterval(t);
   }, [isAuthed, refresh]);
 
   useWebSocket((event) => {

@@ -50,6 +50,13 @@ export default function NotificationsPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Polling fallback — same reasoning as inbox/page.tsx. Once webhooks
+  // can reach us, useWebSocket will deliver events faster than this.
+  useEffect(() => {
+    const t = setInterval(() => { load(); }, 10000);
+    return () => clearInterval(t);
+  }, [load]);
+
   useWebSocket((event) => {
     if (event.type === "new_message" || event.type === "notification") load();
   });

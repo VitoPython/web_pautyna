@@ -73,21 +73,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # ── Telegram Listener (24/7 incoming messages) ──
-  tg-listener:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: python -m app.workers.telegram_listener
-    env_file:
-      - .env
-    depends_on:
-      mongodb:
-        condition: service_started
-      redis:
-        condition: service_started
-    restart: unless-stopped
-
   # ── MongoDB ──
   mongodb:
     image: mongo:7

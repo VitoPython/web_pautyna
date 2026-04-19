@@ -52,19 +52,37 @@ async def unipile_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Malformed JSON")
 
-    event_type = event.get("event") or event.get("type") or ""
+    event_type = event.get("event") or event.get("type") or event.get("status") or ""
     account_id = event.get("account_id") or event.get("accountId") or ""
-
-    # Map Unipile account_id → our user_id via integrations.unipile.account_id.
     db = get_db()
-    user = await db.users.find_one({"integrations.unipile.account_id": account_id}) if account_id else None
+
+    # ── Account lifecycle (from hosted-link notify_url or account_status webhook)
+    # The hosted-link callback carries `name` (which we set to our user_id)
+    # and a `status` of CREATION_SUCCESS / RECONNECTED etc.
+    if event_type in ("CREATION_SUCCESS", "creation_success", "account.created", "RECONNECTED"):
+        our_user_id = event.get("name") or ""  # we embed user_id here when creating the link
+        if our_user_id and account_id:
+            await _handle_account_connected(db, our_user_id, account_id, event)
+        return {"ok": True, "handled": "account_created"}
+
+    if event_type in ("CREATION_FAIL", "creation_fail", "account.disconnected", "DISCONNECTED"):
+        log.info(f"Unipile account event {event_type}: account_id={account_id}")
+        if account_id:
+            await db.users.update_one(
+                {"integrations.unipile.accounts.account_id": account_id},
+                {"$set": {"integrations.unipile.accounts.$.status": "disconnected"}},
+            )
+        return {"ok": True, "handled": "account_status"}
+
+    # ── Messaging / social events — lookup user by account_id
+    user = await db.users.find_one({"integrations.unipile.accounts.account_id": account_id}) if account_id else None
     if not user:
         log.warning(f"Unipile event for unknown account_id={account_id}, type={event_type}")
         return {"ok": True, "matched": False}
 
     user_id = str(user["_id"])
 
-    if event_type in ("message.received", "message_received"):
+    if event_type in ("message.received", "message_received", "message_new", "new_message"):
         await _handle_message_received(db, user_id, event)
     elif event_type in ("connection.accepted", "connection_accepted"):
         await _handle_connection_accepted(db, user_id, event)
@@ -74,6 +92,49 @@ async def unipile_webhook(
         log.info(f"Unhandled Unipile event type: {event_type}")
 
     return {"ok": True, "matched": True}
+
+
+async def _handle_account_connected(db, user_id: str, account_id: str, event: dict):
+    """Persist a newly connected Unipile account on the user document."""
+    from bson import ObjectId
+    provider = (
+        event.get("provider")
+        or event.get("type")
+        or event.get("account_type")
+        or ""
+    ).lower()
+
+    entry = {
+        "account_id": account_id,
+        "provider": provider,
+        "status": "connected",
+        "connected_at": datetime.utcnow(),
+        "name": event.get("name_value") or event.get("display_name") or "",
+    }
+
+    # Upsert by account_id — avoid duplicates if webhook fires twice.
+    try:
+        uid = ObjectId(user_id)
+    except Exception:
+        log.warning(f"Unipile webhook carried invalid user_id={user_id}")
+        return
+
+    # Remove any stale entry with same account_id, then push fresh.
+    await db.users.update_one(
+        {"_id": uid},
+        {"$pull": {"integrations.unipile.accounts": {"account_id": account_id}}},
+    )
+    await db.users.update_one(
+        {"_id": uid},
+        {"$push": {"integrations.unipile.accounts": entry}},
+    )
+
+    # Tell the user's WebSocket so the /integrations page can react live.
+    await publish_event(user_id, "unipile_connected", {
+        "account_id": account_id,
+        "provider": provider,
+    })
+    log.info(f"Unipile: user {user_id} connected {provider} account {account_id}")
 
 
 async def _handle_message_received(db, user_id: str, event: dict):
