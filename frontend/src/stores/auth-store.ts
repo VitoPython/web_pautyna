@@ -18,6 +18,7 @@ interface AuthState {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  updateProfile: (patch: Partial<Pick<User, "name" | "email" | "avatar_url">>) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -54,5 +55,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch {
       set({ user: null, isAuthenticated: false, isLoading: false });
     }
+  },
+
+  updateProfile: async (patch) => {
+    const { data } = await api.patch("/auth/me", patch);
+    set({ user: data });
   },
 }));

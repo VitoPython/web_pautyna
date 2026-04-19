@@ -159,17 +159,27 @@ export default function Sidebar() {
       {/* User section */}
       <div className="border-t border-zinc-800 px-2 py-3">
         {user && (
-          <div className={`flex items-center gap-3 px-3 py-2 ${collapsed ? "justify-center" : ""}`}>
-            <div className="w-8 h-8 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-sm font-bold shrink-0">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
+          <Link
+            href="/profile"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-800/60 transition-colors ${
+              collapsed ? "justify-center" : ""
+            } ${pathname.startsWith("/profile") ? "bg-zinc-800/60" : ""}`}
+          >
+            {user.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-violet-500/20 text-violet-400 flex items-center justify-center text-sm font-bold shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+            )}
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-200 truncate">{user.name}</p>
                 <p className="text-xs text-zinc-500 truncate">{user.email}</p>
               </div>
             )}
-          </div>
+          </Link>
         )}
         <button
           onClick={toggleSound}

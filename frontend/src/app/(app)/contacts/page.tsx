@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import ContactDrawer from "@/components/contacts/ContactDrawer";
 
 interface Contact {
   _id: string;
@@ -13,7 +14,7 @@ interface Contact {
   company?: string;
   website?: string;
   avatar_url?: string;
-  platforms: { type: string; profile_id: string }[];
+  platforms: { type: string; profile_id: string; chat_id?: string; account_id?: string }[];
   tags: string[];
   extra?: { email?: string; phone?: string; job_title?: string; company?: string };
 }
@@ -37,6 +38,7 @@ export default function ContactsPage() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<ModalView>(null);
   const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [drawerContact, setDrawerContact] = useState<Contact | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -131,7 +133,7 @@ export default function ContactsPage() {
                 const company = getField(c, "company");
                 const jobTitle = getField(c, "job_title");
                 return (
-                  <tr key={c._id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors group cursor-pointer" onClick={() => openEdit(c)}>
+                  <tr key={c._id} className="border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors group cursor-pointer" onClick={() => setDrawerContact(c)}>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
                         {c.avatar_url ? (
@@ -162,13 +164,39 @@ export default function ContactsPage() {
                       </div>
                     </td>
                     <td className="py-3 px-3" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleDelete(c._id)}
-                        className="text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Видалити">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
-                          <polyline points="3,6 5,6 21,6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                        </svg>
-                      </button>
+                      <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => setDrawerContact(c)}
+                          className="text-zinc-500 hover:text-violet-300 hover:bg-zinc-800 rounded-md p-1.5 transition-colors"
+                          title="Інфо"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="16" x2="12" y2="12" />
+                            <line x1="12" y1="8" x2="12.01" y2="8" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => openEdit(c)}
+                          className="text-zinc-500 hover:text-violet-300 hover:bg-zinc-800 rounded-md p-1.5 transition-colors"
+                          title="Редагувати"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(c._id)}
+                          className="text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-md p-1.5 transition-colors"
+                          title="Видалити"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
+                            <polyline points="3,6 5,6 21,6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -177,6 +205,19 @@ export default function ContactsPage() {
           </table>
         )}
       </div>
+
+      {/* Contact drawer — opens on row click and on info button */}
+      {drawerContact && (
+        <ContactDrawer
+          contact={drawerContact}
+          onClose={() => setDrawerContact(null)}
+          onEdit={() => {
+            setEditContact(drawerContact);
+            setDrawerContact(null);
+            setModal("edit");
+          }}
+        />
+      )}
 
       {/* ── Modals ── */}
       {modal && (
