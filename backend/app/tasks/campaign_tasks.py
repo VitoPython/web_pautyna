@@ -174,10 +174,15 @@ async def _scheduler_tick():
     if not active_campaigns:
         return 0
 
+    # Pick up leads that are due OR stuck with null next_action_at (added while
+    # draft, then the campaign was later activated). Treat null as "run now".
     cursor = db.campaign_leads.find({
         "campaign_id": {"$in": list(active_campaigns.keys())},
         "status": {"$in": ["pending", "in_progress"]},
-        "next_action_at": {"$lte": now},
+        "$or": [
+            {"next_action_at": {"$lte": now}},
+            {"next_action_at": None},
+        ],
     }).limit(200)
 
     processed = 0

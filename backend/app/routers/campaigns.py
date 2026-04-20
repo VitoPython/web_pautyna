@@ -85,7 +85,12 @@ async def get_campaign(campaign_id: str, user_id: str = Depends(get_current_user
 @router.patch("/{campaign_id}")
 async def update_campaign(campaign_id: str, data: CampaignUpdate, user_id: str = Depends(get_current_user_id)):
     db = get_db()
-    updates: dict = {"updated_at": datetime.utcnow()}
+    existing = await db.campaigns.find_one({"_id": ObjectId(campaign_id), "owner_id": user_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    now = datetime.utcnow()
+    updates: dict = {"updated_at": now}
     if data.name is not None:
         updates["name"] = data.name.strip()
     if data.description is not None:
@@ -97,12 +102,21 @@ async def update_campaign(campaign_id: str, data: CampaignUpdate, user_id: str =
     if data.steps is not None:
         updates["steps"] = [s.model_dump() for s in data.steps]
 
-    res = await db.campaigns.update_one(
-        {"_id": ObjectId(campaign_id), "owner_id": user_id},
-        {"$set": updates},
-    )
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    await db.campaigns.update_one({"_id": existing["_id"]}, {"$set": updates})
+
+    # Transitioning to "active" — wake up leads that were queued while draft/paused.
+    # Scheduler filter is `next_action_at <= now`, so a null value means the lead
+    # never fires. Set those to `now` so the next tick picks them up.
+    if data.status == "active" and existing.get("status") != "active":
+        await db.campaign_leads.update_many(
+            {
+                "campaign_id": campaign_id,
+                "status": {"$in": ["pending", "in_progress"]},
+                "next_action_at": None,
+            },
+            {"$set": {"next_action_at": now}},
+        )
+
     return {"ok": True}
 
 
