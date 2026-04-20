@@ -74,26 +74,43 @@ export default function InboxPage() {
     }
   }, [setUnreadMessages]);
 
-  const loadMessages = useCallback(async (contactId: string) => {
-    setLoadingMessages(true);
-    try {
-      const { data } = await api.get(`/messages/contact/${contactId}`);
-      setMessages(data);
-    } finally {
-      setLoadingMessages(false);
-    }
+  // Replace messages only when something actually changed — compare length +
+  // last message id — so polling a stable thread doesn't cause a re-render
+  // storm that visually "jumps" the view.
+  const applyMessages = useCallback((next: Message[]) => {
+    setMessages((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.length > 0 &&
+        prev[prev.length - 1]?._id === next[next.length - 1]?._id &&
+        prev[0]?._id === next[0]?._id
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, []);
 
-  const syncMessages = useCallback(async (contactId: string) => {
-    setSyncing(true);
+  const loadMessages = useCallback(async (contactId: string, opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setLoadingMessages(true);
+    try {
+      const { data } = await api.get(`/messages/contact/${contactId}`);
+      applyMessages(data);
+    } finally {
+      if (!opts.silent) setLoadingMessages(false);
+    }
+  }, [applyMessages]);
+
+  const syncMessages = useCallback(async (contactId: string, opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setSyncing(true);
     try {
       await api.post(`/messages/contact/${contactId}/sync`);
-      await loadMessages(contactId);
+      await loadMessages(contactId, { silent: true });
       await loadChats();
     } catch {
       // silent
     } finally {
-      setSyncing(false);
+      if (!opts.silent) setSyncing(false);
     }
   }, [loadMessages, loadChats]);
 
@@ -116,22 +133,34 @@ export default function InboxPage() {
       loadChats();
       const payload = event.payload as { contact_id: string };
       if (selectedChat?.contact_id === payload.contact_id) {
-        loadMessages(selectedChat.contact_id);
+        loadMessages(selectedChat.contact_id, { silent: true });
       }
     }
   });
 
-  // Auto-scroll on new messages
+  // Auto-scroll only when the message count grows or we switched chats.
+  // Without this gate, every idempotent poll fires a scroll animation.
+  const prevLenRef = useRef(0);
+  const prevChatRef = useRef<string | null>(null);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const chatId = selectedChat?.contact_id || null;
+    const switched = chatId !== prevChatRef.current;
+    const grew = messages.length > prevLenRef.current;
+    if (switched || grew) {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: switched ? "auto" : "smooth",
+      });
+    }
+    prevLenRef.current = messages.length;
+    prevChatRef.current = chatId;
+  }, [messages, selectedChat?.contact_id]);
 
-  // When chat is selected — load + sync messages
+  // When chat is selected — load + silently sync messages (sync must not
+  // toggle the loading spinner, or the user sees a flash every switch).
   useEffect(() => {
     if (!selectedChat) return;
     loadMessages(selectedChat.contact_id);
-    // Also fetch fresh from platform
-    syncMessages(selectedChat.contact_id);
+    syncMessages(selectedChat.contact_id, { silent: true });
   }, [selectedChat?.contact_id]); // eslint-disable-line
 
   // Interim polling — real-time via Unipile requires webhooks (public URL).
@@ -146,14 +175,14 @@ export default function InboxPage() {
     if (!selectedChat) return;
     const id = selectedChat.contact_id;
     const msgTimer = setInterval(() => {
-      // Sync instead of plain loadMessages — pulls fresh from Unipile.
+      // Sync silently so the chat view does not flash a spinner or rebind.
       api.post(`/messages/contact/${id}/sync`)
-        .then(() => api.get(`/messages/contact/${id}`))
-        .then(({ data }) => setMessages(data))
+        .then(() => api.get<Message[]>(`/messages/contact/${id}`))
+        .then(({ data }) => applyMessages(data))
         .catch(() => {});
     }, 8000);
     return () => clearInterval(msgTimer);
-  }, [selectedChat?.contact_id]); // eslint-disable-line
+  }, [selectedChat?.contact_id, applyMessages]); // eslint-disable-line
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,7 +198,9 @@ export default function InboxPage() {
       });
       setDraft("");
       setEmailSubject("");
-      await loadMessages(selectedChat.contact_id);
+      // Silent refresh — avoid toggling the loading spinner and re-rendering
+      // the whole thread, which is what makes the chat appear to "jump".
+      await loadMessages(selectedChat.contact_id, { silent: true });
       await loadChats();
     } catch (err: unknown) {
       setSendError(getErrorMessage(err, "Не вдалось надіслати"));

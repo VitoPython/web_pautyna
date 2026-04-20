@@ -171,6 +171,9 @@ async def _execute_step_for_lead(db, campaign: dict, lead: dict) -> None:
             {"$set": {"status": "error", "error": str(e)[:300], "next_action_at": None}},
         )
 
+    # If this transition finished the last outstanding lead, flip the campaign.
+    from app.services.campaign_replies import maybe_complete_campaign
+    await maybe_complete_campaign(db, str(campaign["_id"]))
     await _notify_campaign(lead["owner_id"], str(campaign["_id"]))
 
 

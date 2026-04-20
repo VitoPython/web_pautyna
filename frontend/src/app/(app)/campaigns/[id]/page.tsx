@@ -8,6 +8,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { toLocal, countdown } from "@/lib/datetime";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import StepsPipeline, { PipelineStep } from "@/components/campaigns/StepsPipeline";
+import { StatusDonut, StepFunnel } from "@/components/campaigns/AnalyticsCharts";
 
 type CampaignStatus = "draft" | "active" | "paused" | "done";
 
@@ -207,7 +208,7 @@ export default function CampaignDetailPage() {
             onSave={(steps) => updateCampaign({ steps } as Partial<Campaign>)}
           />
         )}
-        {tab === "analytics" && <AnalyticsTab stats={campaign.stats} leads={leads} />}
+        {tab === "analytics" && <AnalyticsTab stats={campaign.stats} leads={leads} steps={campaign.steps} />}
       </div>
     </div>
   );
@@ -568,87 +569,145 @@ function StepsTab({ steps, onSave }: { steps: PipelineStep[]; onSave: (steps: Pi
 
 // ─── Analytics tab ─────────────────────────────────────────────────────
 
-function AnalyticsTab({ stats, leads }: { stats: Campaign["stats"]; leads: Lead[] }) {
-  const cards = [
-    { label: "Всього лідів", value: stats.total, cls: "from-zinc-700/30 to-zinc-800/30", text: "text-white" },
-    { label: "В черзі", value: stats.pending, cls: "from-zinc-700/30 to-zinc-800/30", text: "text-zinc-300" },
-    { label: "В процесі", value: stats.in_progress, cls: "from-sky-500/10 to-sky-500/5", text: "text-sky-300" },
-    { label: "Відповіли", value: stats.replied, cls: "from-emerald-500/10 to-emerald-500/5", text: "text-emerald-300" },
-    { label: "Завершили", value: stats.done, cls: "from-violet-500/10 to-violet-500/5", text: "text-violet-300" },
-    { label: "Помилки", value: stats.error, cls: "from-red-500/10 to-red-500/5", text: "text-red-300" },
-  ];
-
+function AnalyticsTab({
+  stats,
+  leads,
+  steps,
+}: {
+  stats: Campaign["stats"];
+  leads: Lead[];
+  steps: PipelineStep[];
+}) {
   const replyRate = stats.total > 0 ? Math.round((stats.replied / stats.total) * 100) : 0;
   const progressPct = stats.total > 0
     ? Math.round(((stats.done + stats.replied + stats.error) / stats.total) * 100)
     : 0;
 
+  // For each step, how many leads completed it (current_step > i OR lead is terminal past it).
+  const leadsAtStep = steps.map((_, i) =>
+    leads.filter((l) => {
+      // terminal at/after step i means they finished step i
+      if (l.status === "done" || l.status === "replied" || l.status === "error") {
+        // `done` means reached end; `replied` may stop earlier. Count replied as reaching
+        // at least current_step - 1 + 1 = current_step (the step they were ABOUT to run
+        // when they replied), so we count completed = current_step itself.
+        return l.current_step > i || l.status === "done";
+      }
+      return l.current_step > i;
+    }).length
+  );
+
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-        {cards.map((c) => (
-          <div
-            key={c.label}
-            className={`p-4 bg-linear-to-br ${c.cls} border border-zinc-800 rounded-xl`}
-          >
-            <p className="text-xs text-zinc-500 uppercase tracking-wider">{c.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${c.text}`}>{c.value}</p>
-          </div>
-        ))}
+    <div className="p-6 max-w-5xl mx-auto">
+      {/* Headline KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <KpiCard label="Всього лідів" value={stats.total} accent="text-white" />
+        <KpiCard label="Активних" value={stats.pending + stats.in_progress} accent="text-sky-300" />
+        <KpiCard label="Відповіли" value={stats.replied} accent="text-emerald-300" subtitle={`${replyRate}%`} />
+        <KpiCard label="Завершили" value={stats.done + stats.replied} accent="text-violet-300" subtitle={`${progressPct}%`} />
       </div>
 
-      {stats.total > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {stats.total > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Прогрес</p>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-linear-to-r from-violet-600 to-violet-400 transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <span className="text-lg font-bold text-white w-12 text-right">{progressPct}%</span>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-white">Розподіл статусів</p>
+              <p className="text-[11px] text-zinc-500">{stats.total} лідів</p>
             </div>
+            <StatusDonut stats={stats} />
           </div>
-          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Reply rate</p>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-linear-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
-                  style={{ width: `${replyRate}%` }}
-                />
-              </div>
-              <span className="text-lg font-bold text-white w-12 text-right">{replyRate}%</span>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Latest activity */}
-      {leads.length > 0 && (
-        <div className="mt-6 p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Остання активність</p>
-          <div className="flex flex-col gap-2">
-            {[...leads]
-              .filter((l) => l.last_action_at)
-              .sort((a, b) => (b.last_action_at || "").localeCompare(a.last_action_at || ""))
-              .slice(0, 5)
-              .map((l) => {
-                const meta = LEAD_STATUS_META[l.status];
-                return (
-                  <div key={l._id} className="flex items-center gap-3 text-sm">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
-                    <span className="text-white min-w-0 truncate flex-1">{l.contact_name}</span>
-                    <span className="text-xs text-zinc-500 whitespace-nowrap">{meta.label}</span>
-                    <span className="text-[11px] text-zinc-600 whitespace-nowrap">{toLocal(l.last_action_at)}</span>
-                  </div>
-                );
-              })}
+          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-white">Воронка по кроках</p>
+              <p className="text-[11px] text-zinc-500">{steps.length} {steps.length === 1 ? "крок" : "кроків"}</p>
+            </div>
+            {steps.length > 0 ? (
+              <StepFunnel steps={steps} leadsAtStep={leadsAtStep} totalLeads={stats.total} />
+            ) : (
+              <p className="text-zinc-600 text-sm italic">Немає кроків для аналізу</p>
+            )}
           </div>
+
+          {/* Progress + reply rate bars */}
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <GaugeBar label="Прогрес кампанії" pct={progressPct} from="#7c3aed" to="#c084fc" />
+            <GaugeBar label="Reply rate" pct={replyRate} from="#059669" to="#34d399" />
+          </div>
+
+          {/* Timeline of recent activity */}
+          {leads.some((l) => l.last_action_at) && (
+            <div className="lg:col-span-2 p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+              <p className="text-sm font-medium text-white mb-3">Остання активність</p>
+              <div className="flex flex-col gap-2">
+                {[...leads]
+                  .filter((l) => l.last_action_at)
+                  .sort((a, b) => (b.last_action_at || "").localeCompare(a.last_action_at || ""))
+                  .slice(0, 6)
+                  .map((l) => {
+                    const meta = LEAD_STATUS_META[l.status];
+                    return (
+                      <div key={l._id} className="flex items-center gap-3 text-sm py-1 border-b border-zinc-800/40 last:border-0">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
+                        <span className="text-white min-w-0 truncate flex-1">{l.contact_name}</span>
+                        <span className={`text-xs whitespace-nowrap ${meta.cls.split(" ").find((c) => c.startsWith("text-")) || "text-zinc-500"}`}>
+                          {meta.label}
+                        </span>
+                        <span className="text-[11px] text-zinc-600 whitespace-nowrap tabular-nums">{toLocal(l.last_action_at)}</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center h-48 border border-dashed border-zinc-800 rounded-xl">
+          <p className="text-zinc-600 text-sm">Додайте лідів щоб побачити аналітику</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  accent,
+  subtitle,
+}: {
+  label: string;
+  value: number;
+  accent: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+      <p className="text-[11px] text-zinc-500 uppercase tracking-wider">{label}</p>
+      <div className="flex items-baseline gap-2 mt-1">
+        <p className={`text-3xl font-bold tabular-nums ${accent}`}>{value}</p>
+        {subtitle && <p className="text-sm text-zinc-500">{subtitle}</p>}
+      </div>
+    </div>
+  );
+}
+
+function GaugeBar({ label, pct, from, to }: { label: string; pct: number; from: string; to: string }) {
+  return (
+    <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="text-2xl font-bold text-white tabular-nums">{pct}%</p>
+      </div>
+      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${pct}%`,
+            background: `linear-gradient(to right, ${from}, ${to})`,
+          }}
+        />
+      </div>
     </div>
   );
 }

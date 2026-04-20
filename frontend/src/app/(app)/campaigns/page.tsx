@@ -95,75 +95,10 @@ export default function CampaignsPage() {
             </button>
           </div>
         ) : (
-          <div className="border border-zinc-800 rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[640px]">
-              <thead className="bg-zinc-900/60">
-                <tr className="text-left">
-                  <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Кампанія</th>
-                  <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Статус</th>
-                  <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Прогрес</th>
-                  <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Відповіді</th>
-                  <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Створено</th>
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map((c) => {
-                  const meta = STATUS_META[c.status] || STATUS_META.draft;
-                  const progress = c.stats.total > 0
-                    ? Math.round(((c.stats.done + c.stats.replied) / c.stats.total) * 100)
-                    : 0;
-                  const replyRate = c.stats.total > 0
-                    ? Math.round((c.stats.replied / c.stats.total) * 100)
-                    : 0;
-                  return (
-                    <tr
-                      key={c._id}
-                      className="border-t border-zinc-800 hover:bg-zinc-900/50 transition-colors"
-                    >
-                      <td className="py-3 px-4">
-                        <Link
-                          href={`/campaigns/${c._id}`}
-                          className="text-white font-medium hover:text-violet-300 transition-colors"
-                        >
-                          {c.name}
-                        </Link>
-                        {c.description && (
-                          <p className="text-xs text-zinc-500 mt-0.5 truncate max-w-md">{c.description}</p>
-                        )}
-                        <p className="text-[11px] text-zinc-600 mt-0.5">
-                          {c.steps.length} {c.steps.length === 1 ? "крок" : "кроків"}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                          {meta.label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 min-w-[180px]">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-linear-to-r from-violet-600 to-violet-400 transition-all duration-500"
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-zinc-400 w-10 text-right">{progress}%</span>
-                        </div>
-                        <p className="text-[11px] text-zinc-600 mt-1">
-                          {c.stats.done + c.stats.replied} / {c.stats.total} лідів
-                        </p>
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="text-sm text-zinc-300">{replyRate}%</p>
-                        <p className="text-[11px] text-zinc-600">{c.stats.replied} з {c.stats.total}</p>
-                      </td>
-                      <td className="py-3 px-4 text-xs text-zinc-500">{toLocal(c.created_at)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {campaigns.map((c) => (
+              <CampaignCard key={c._id} campaign={c} />
+            ))}
           </div>
         )}
       </div>
@@ -178,6 +113,85 @@ export default function CampaignsPage() {
         />
       )}
     </div>
+  );
+}
+
+// ─── Campaign card ────────────────────────────────────────────────────
+
+function CampaignCard({ campaign: c }: { campaign: Campaign }) {
+  const meta = STATUS_META[c.status] || STATUS_META.draft;
+  const total = c.stats.total || 1; // avoid division by zero on empty campaigns
+  const segments = [
+    { key: "replied", value: c.stats.replied, color: "bg-emerald-500" },
+    { key: "done", value: c.stats.done, color: "bg-violet-500" },
+    { key: "in_progress", value: c.stats.in_progress, color: "bg-sky-500" },
+    { key: "error", value: c.stats.error, color: "bg-red-500" },
+    { key: "pending", value: c.stats.pending, color: "bg-zinc-700" },
+  ];
+  const progress = c.stats.total > 0
+    ? Math.round(((c.stats.done + c.stats.replied) / c.stats.total) * 100)
+    : 0;
+  const replyRate = c.stats.total > 0
+    ? Math.round((c.stats.replied / c.stats.total) * 100)
+    : 0;
+
+  return (
+    <Link
+      href={`/campaigns/${c._id}`}
+      className="group relative flex flex-col p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-violet-500/40 hover:bg-zinc-900 transition-all"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+          {meta.label}
+        </span>
+        <span className="text-[11px] text-zinc-600 whitespace-nowrap">
+          {c.steps.length} {c.steps.length === 1 ? "крок" : "кроків"}
+        </span>
+      </div>
+
+      <h3 className="text-white font-semibold text-lg leading-tight truncate group-hover:text-violet-200 transition-colors">
+        {c.name}
+      </h3>
+      {c.description && (
+        <p className="text-xs text-zinc-500 mt-1 line-clamp-2 min-h-[2em]">{c.description}</p>
+      )}
+
+      {/* Segmented progress bar */}
+      <div className="mt-4">
+        <div className="flex h-2 rounded-full overflow-hidden bg-zinc-800">
+          {segments.map((s) => (
+            s.value > 0 ? (
+              <div
+                key={s.key}
+                className={`${s.color} transition-all duration-500`}
+                style={{ width: `${(s.value / total) * 100}%` }}
+                title={`${s.key}: ${s.value}`}
+              />
+            ) : null
+          ))}
+        </div>
+        <div className="flex items-center justify-between mt-2 text-[11px]">
+          <span className="text-zinc-500">
+            <span className="text-white font-medium">{c.stats.total}</span> лідів
+          </span>
+          <span className="text-zinc-500">
+            Прогрес <span className="text-violet-300 font-medium">{progress}%</span>
+          </span>
+          <span className="text-zinc-500">
+            Reply <span className="text-emerald-300 font-medium">{replyRate}%</span>
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-600">
+        <span>Створено {toLocal(c.created_at)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4 text-zinc-600 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all">
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <polyline points="12,5 19,12 12,19" />
+        </svg>
+      </div>
+    </Link>
   );
 }
 
