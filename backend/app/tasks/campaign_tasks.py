@@ -29,6 +29,16 @@ def _run(coro):
     return asyncio.run(_wrapped())
 
 
+async def _notify_campaign(user_id: str, campaign_id: str) -> None:
+    """Push a WS event so the open campaign detail page re-fetches stats/leads."""
+    try:
+        from app.services.realtime import publish_event
+        await publish_event(user_id, "campaign_updated", {"campaign_id": campaign_id})
+    except Exception:
+        # Best-effort — don't fail the tick on a notify hiccup.
+        pass
+
+
 async def _execute_step_for_lead(db, campaign: dict, lead: dict) -> None:
     """Run the lead's current step. Advances lead state regardless of outcome."""
     from app.services import unipile_service
@@ -161,6 +171,8 @@ async def _execute_step_for_lead(db, campaign: dict, lead: dict) -> None:
             {"$set": {"status": "error", "error": str(e)[:300], "next_action_at": None}},
         )
 
+    await _notify_campaign(lead["owner_id"], str(campaign["_id"]))
+
 
 async def _backfill_replies(db) -> int:
     """Flip leads whose contact replied between ticks. Handles the case where
@@ -184,6 +196,7 @@ async def _backfill_replies(db) -> int:
                 {"_id": lead["_id"]},
                 {"$set": {"status": "replied", "next_action_at": None}},
             )
+            await _notify_campaign(lead["owner_id"], lead["campaign_id"])
             count += 1
     return count
 

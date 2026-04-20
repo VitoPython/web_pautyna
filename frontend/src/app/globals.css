@@ -19,6 +19,12 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
+/* Animated flow line for campaign pipeline */
+@keyframes pipeline-flow {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 8px; }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

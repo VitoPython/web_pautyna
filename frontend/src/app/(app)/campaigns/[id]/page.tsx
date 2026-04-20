@@ -2,27 +2,21 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { toLocal, countdown } from "@/lib/datetime";
+import { useWebSocket } from "@/hooks/useWebSocket";
+import StepsPipeline, { PipelineStep } from "@/components/campaigns/StepsPipeline";
 
 type CampaignStatus = "draft" | "active" | "paused" | "done";
-
-interface Step {
-  order: number;
-  type: string;
-  platform?: string;
-  content: string;
-  subject?: string;
-  delay_minutes: number;
-}
 
 interface Campaign {
   _id: string;
   name: string;
   description: string;
   status: CampaignStatus;
-  steps: Step[];
+  steps: PipelineStep[];
   created_at: string;
   updated_at: string;
   stats: {
@@ -59,33 +53,20 @@ interface Contact {
   company?: string;
 }
 
-const STATUS_META: Record<CampaignStatus, { label: string; cls: string }> = {
-  draft: { label: "Чернетка", cls: "bg-zinc-700/40 text-zinc-300 border-zinc-700" },
-  active: { label: "Активна", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  paused: { label: "Пауза", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  done: { label: "Завершено", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
+const STATUS_META: Record<CampaignStatus, { label: string; cls: string; dot: string }> = {
+  draft: { label: "Чернетка", cls: "bg-zinc-700/40 text-zinc-300 border-zinc-700", dot: "bg-zinc-400" },
+  active: { label: "Активна", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", dot: "bg-emerald-400 animate-pulse" },
+  paused: { label: "Пауза", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", dot: "bg-amber-400" },
+  done: { label: "Завершено", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", dot: "bg-violet-400" },
 };
 
-const LEAD_STATUS_META: Record<Lead["status"], { label: string; cls: string }> = {
-  pending: { label: "В черзі", cls: "text-zinc-300" },
-  in_progress: { label: "В процесі", cls: "text-sky-300" },
-  replied: { label: "Відповів", cls: "text-emerald-300" },
-  done: { label: "Завершено", cls: "text-violet-300" },
-  error: { label: "Помилка", cls: "text-red-300" },
+const LEAD_STATUS_META: Record<Lead["status"], { label: string; cls: string; dot: string }> = {
+  pending: { label: "В черзі", cls: "text-zinc-300 bg-zinc-700/30", dot: "bg-zinc-400" },
+  in_progress: { label: "В процесі", cls: "text-sky-300 bg-sky-500/15", dot: "bg-sky-400 animate-pulse" },
+  replied: { label: "Відповів", cls: "text-emerald-300 bg-emerald-500/15", dot: "bg-emerald-400" },
+  done: { label: "Завершено", cls: "text-violet-300 bg-violet-500/15", dot: "bg-violet-400" },
+  error: { label: "Помилка", cls: "text-red-300 bg-red-500/15", dot: "bg-red-400" },
 };
-
-const PLATFORMS = [
-  { value: "telegram", label: "Telegram" },
-  { value: "gmail", label: "Gmail" },
-  { value: "linkedin", label: "LinkedIn" },
-  { value: "instagram", label: "Instagram" },
-  { value: "whatsapp", label: "WhatsApp" },
-];
-
-function formatDate(iso?: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("uk", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
 
 export default function CampaignDetailPage() {
   const params = useParams<{ id: string }>();
@@ -113,6 +94,19 @@ export default function CampaignDetailPage() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Soft poll every 20s as a safety net if WS is dropped.
+  useEffect(() => {
+    const t = setInterval(load, 20000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  // Live refresh when the backend pushes campaign_updated for this campaign.
+  useWebSocket((ev) => {
+    if (ev.type !== "campaign_updated") return;
+    const payload = ev.payload as { campaign_id?: string };
+    if (payload.campaign_id === id) load();
+  });
 
   const updateCampaign = async (patch: Partial<Campaign>) => {
     if (!id) return;
@@ -150,45 +144,54 @@ export default function CampaignDetailPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b border-zinc-800">
-        <Link href="/campaigns" className="text-xs text-zinc-500 hover:text-violet-300 transition-colors">
-          ← Кампанії
+      <div className="px-6 pt-6 pb-4 border-b border-zinc-800 bg-linear-to-b from-zinc-900/30 to-transparent">
+        <Link href="/campaigns" className="text-xs text-zinc-500 hover:text-violet-300 transition-colors inline-flex items-center gap-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3 h-3">
+            <polyline points="15,18 9,12 15,6" />
+          </svg>
+          Кампанії
         </Link>
         <div className="flex items-center gap-3 mt-2 flex-wrap">
-          <h1 className="text-2xl font-bold text-white">{campaign.name}</h1>
-          <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
+          <h1 className="text-2xl font-bold text-white tracking-tight">{campaign.name}</h1>
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-medium border inline-flex items-center gap-1.5 ${meta.cls}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
             {meta.label}
           </span>
           <button
             onClick={toggleStatus}
             disabled={campaign.steps.length === 0}
-            className={`ml-auto px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`ml-auto px-4 py-2 text-sm font-medium rounded-lg transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
               campaign.status === "active"
-                ? "bg-amber-600 hover:bg-amber-500 text-white"
-                : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                ? "bg-amber-600 hover:bg-amber-500 text-white shadow-amber-500/20"
+                : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20"
             }`}
             title={campaign.steps.length === 0 ? "Додайте хоча б один крок" : undefined}
           >
-            {campaign.status === "active" ? "Призупинити" : "Запустити"}
+            {campaign.status === "active" ? "⏸ Призупинити" : "▶ Запустити"}
           </button>
         </div>
-        {campaign.description && <p className="text-zinc-500 text-sm mt-1">{campaign.description}</p>}
+        {campaign.description && <p className="text-zinc-500 text-sm mt-2">{campaign.description}</p>}
 
         {/* Tabs */}
-        <div className="flex gap-2 mt-4">
+        <div className="flex gap-1 mt-5 border-b border-zinc-800 -mx-6 px-6">
           {([
-            ["leads", `Ліди (${campaign.stats.total})`],
-            ["steps", `Кроки (${campaign.steps.length})`],
-            ["analytics", "Аналітика"],
-          ] as const).map(([key, label]) => (
+            ["leads", `Ліди`, campaign.stats.total],
+            ["steps", `Кроки`, campaign.steps.length],
+            ["analytics", "Аналітика", null],
+          ] as const).map(([key, label, count]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`px-4 py-1.5 text-sm rounded-lg transition-colors ${
-                tab === key ? "bg-violet-500/20 text-violet-300" : "text-zinc-400 hover:text-white"
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                tab === key
+                  ? "border-violet-500 text-white"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
               }`}
             >
               {label}
+              {count !== null && count > 0 && (
+                <span className="ml-1.5 text-[11px] text-zinc-500">({count})</span>
+              )}
             </button>
           ))}
         </div>
@@ -204,7 +207,7 @@ export default function CampaignDetailPage() {
             onSave={(steps) => updateCampaign({ steps } as Partial<Campaign>)}
           />
         )}
-        {tab === "analytics" && <AnalyticsTab stats={campaign.stats} />}
+        {tab === "analytics" && <AnalyticsTab stats={campaign.stats} leads={leads} />}
       </div>
     </div>
   );
@@ -220,10 +223,17 @@ function LeadsTab({
 }: {
   campaignId: string;
   leads: Lead[];
-  steps: Step[];
+  steps: PipelineStep[];
   onChanged: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+
+  // Tick every second to update countdowns.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const remove = async (leadId: string) => {
     if (!confirm("Видалити ліда з кампанії?")) return;
@@ -239,7 +249,7 @@ function LeadsTab({
         </p>
         <button
           onClick={() => setAddOpen(true)}
-          className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
+          className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors shadow-lg shadow-violet-500/20"
         >
           + Додати лідів
         </button>
@@ -254,7 +264,7 @@ function LeadsTab({
         </div>
       ) : (
         <div className="border border-zinc-800 rounded-xl overflow-x-auto">
-          <table className="w-full min-w-[720px]">
+          <table className="w-full min-w-[880px]">
             <thead className="bg-zinc-900/60">
               <tr className="text-left">
                 <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Контакт</th>
@@ -262,12 +272,16 @@ function LeadsTab({
                 <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Крок</th>
                 <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Останнє</th>
                 <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Наступне</th>
+                <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Відлік</th>
                 <th className="py-3 px-4 w-12"></th>
               </tr>
             </thead>
             <tbody>
               {leads.map((lead) => {
                 const meta = LEAD_STATUS_META[lead.status];
+                const countdownStr = lead.status === "pending" || lead.status === "in_progress"
+                  ? countdown(lead.next_action_at)
+                  : "—";
                 return (
                   <tr key={lead._id} className="border-t border-zinc-800 hover:bg-zinc-900/50 transition-colors">
                     <td className="py-3 px-4">
@@ -294,7 +308,10 @@ function LeadsTab({
                       </Link>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium ${meta.cls}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
                       {lead.status === "error" && lead.error && (
                         <p className="text-[11px] text-red-400 mt-0.5 max-w-[240px] truncate" title={lead.error}>
                           {lead.error}
@@ -304,8 +321,17 @@ function LeadsTab({
                     <td className="py-3 px-4 text-xs text-zinc-400">
                       {steps.length > 0 ? `${Math.min(lead.current_step + 1, steps.length)} / ${steps.length}` : "—"}
                     </td>
-                    <td className="py-3 px-4 text-xs text-zinc-500">{formatDate(lead.last_action_at)}</td>
-                    <td className="py-3 px-4 text-xs text-zinc-500">{formatDate(lead.next_action_at)}</td>
+                    <td className="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap">{toLocal(lead.last_action_at)}</td>
+                    <td className="py-3 px-4 text-xs text-zinc-500 whitespace-nowrap">{toLocal(lead.next_action_at)}</td>
+                    <td className="py-3 px-4 text-xs whitespace-nowrap">
+                      <span className={
+                        countdownStr === "зараз" ? "text-emerald-300 font-medium"
+                        : countdownStr === "—" ? "text-zinc-700"
+                        : "text-violet-300"
+                      }>
+                        {countdownStr}
+                      </span>
+                    </td>
                     <td className="py-3 px-4">
                       <button
                         onClick={() => remove(lead._id)}
@@ -489,36 +515,19 @@ function AddLeadsModal({
 
 // ─── Steps tab ─────────────────────────────────────────────────────────
 
-function StepsTab({ steps, onSave }: { steps: Step[]; onSave: (steps: Step[]) => Promise<void> }) {
-  const [local, setLocal] = useState<Step[]>(steps);
+function StepsTab({ steps, onSave }: { steps: PipelineStep[]; onSave: (steps: PipelineStep[]) => Promise<void> }) {
+  const [local, setLocal] = useState<PipelineStep[]>(steps);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
 
-  // Reset local when server state changes (e.g. after save).
-  useEffect(() => { setLocal(steps); }, [steps]);
-
-  const addStep = () => {
-    const order = local.length + 1;
-    setLocal([
-      ...local,
-      {
-        order,
-        type: "send_message",
-        platform: order === 1 ? "telegram" : local[local.length - 1]?.platform || "telegram",
-        content: "",
-        subject: "",
-        delay_minutes: order === 1 ? 0 : 60,
-      },
-    ]);
-  };
-
-  const updateStep = (idx: number, patch: Partial<Step>) => {
-    setLocal((list) => list.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
-  };
-
-  const removeStep = (idx: number) => {
-    setLocal((list) => list.filter((_, i) => i !== idx).map((s, i) => ({ ...s, order: i + 1 })));
-  };
+  const initialRef = useRef(steps);
+  // Reset local when server state changes from outside (e.g. refresh).
+  useEffect(() => {
+    if (JSON.stringify(steps) !== JSON.stringify(initialRef.current)) {
+      setLocal(steps);
+      initialRef.current = steps;
+    }
+  }, [steps]);
 
   const save = async () => {
     setSaving(true);
@@ -526,17 +535,17 @@ function StepsTab({ steps, onSave }: { steps: Step[]; onSave: (steps: Step[]) =>
       const sanitized = local.map((s, i) => ({ ...s, order: i + 1 }));
       await onSave(sanitized);
       setSavedAt(new Date());
+      initialRef.current = sanitized;
     } finally {
       setSaving(false);
     }
   };
 
   const dirty = JSON.stringify(local) !== JSON.stringify(steps);
-  const isEmail = (p?: string) => p === "gmail" || p === "outlook";
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         <p className="text-sm text-zinc-400">
           {local.length > 0 ? `${local.length} ${local.length === 1 ? "крок" : "кроків"}` : "Послідовність порожня"}
         </p>
@@ -545,129 +554,101 @@ function StepsTab({ steps, onSave }: { steps: Step[]; onSave: (steps: Step[]) =>
           <button
             onClick={save}
             disabled={!dirty || saving}
-            className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors disabled:opacity-40"
+            className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors disabled:opacity-40 shadow-lg shadow-violet-500/20"
           >
             {saving ? "Збереження…" : "Зберегти"}
           </button>
         </div>
       </div>
 
-      {local.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-48 border border-dashed border-zinc-800 rounded-xl">
-          <p className="text-zinc-600 text-sm mb-2">Додайте перший крок послідовності.</p>
-          <button onClick={addStep} className="text-violet-400 text-sm hover:text-violet-300">
-            + Крок
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {local.map((step, idx) => (
-            <div key={idx} className="border border-zinc-800 rounded-xl p-4 bg-zinc-900/40">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-violet-500/20 text-violet-300 text-xs font-bold flex items-center justify-center">
-                    {idx + 1}
-                  </span>
-                  <span className="text-sm text-white font-medium">Надіслати повідомлення</span>
-                </div>
-                <button
-                  onClick={() => removeStep(idx)}
-                  className="text-zinc-500 hover:text-red-400 transition-colors"
-                  title="Видалити"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4">
-                    <polyline points="3,6 5,6 21,6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="block text-[11px] text-zinc-500 mb-1">Платформа</label>
-                  <select
-                    value={step.platform || "telegram"}
-                    onChange={(e) => updateStep(idx, { platform: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500"
-                  >
-                    {PLATFORMS.map((p) => (
-                      <option key={p.value} value={p.value}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] text-zinc-500 mb-1">
-                    {idx === 0 ? "Відправити через (хв, 0 = одразу)" : "Затримка від попереднього (хв)"}
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={step.delay_minutes}
-                    onChange={(e) => updateStep(idx, { delay_minutes: Math.max(0, Number(e.target.value) || 0) })}
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-              </div>
-
-              {isEmail(step.platform) && (
-                <div className="mb-3">
-                  <label className="block text-[11px] text-zinc-500 mb-1">Тема листа</label>
-                  <input
-                    type="text"
-                    value={step.subject || ""}
-                    onChange={(e) => updateStep(idx, { subject: e.target.value })}
-                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500"
-                    placeholder="Subject"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-[11px] text-zinc-500 mb-1">Текст повідомлення</label>
-                <textarea
-                  value={step.content}
-                  onChange={(e) => updateStep(idx, { content: e.target.value })}
-                  rows={4}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-violet-500 resize-y"
-                  placeholder="Привіт, я хотів би обговорити…"
-                />
-              </div>
-            </div>
-          ))}
-
-          <button
-            onClick={addStep}
-            className="py-3 border border-dashed border-zinc-700 rounded-xl text-sm text-zinc-400 hover:text-violet-300 hover:border-violet-500/40 transition-colors"
-          >
-            + Крок
-          </button>
-        </div>
-      )}
+      <StepsPipeline steps={local} onChange={setLocal} />
     </div>
   );
 }
 
 // ─── Analytics tab ─────────────────────────────────────────────────────
 
-function AnalyticsTab({ stats }: { stats: Campaign["stats"] }) {
+function AnalyticsTab({ stats, leads }: { stats: Campaign["stats"]; leads: Lead[] }) {
   const cards = [
-    { label: "Всього лідів", value: stats.total, cls: "text-white" },
-    { label: "В черзі", value: stats.pending, cls: "text-zinc-300" },
-    { label: "В процесі", value: stats.in_progress, cls: "text-sky-300" },
-    { label: "Відповіли", value: stats.replied, cls: "text-emerald-300" },
-    { label: "Завершили", value: stats.done, cls: "text-violet-300" },
-    { label: "Помилки", value: stats.error, cls: "text-red-300" },
+    { label: "Всього лідів", value: stats.total, cls: "from-zinc-700/30 to-zinc-800/30", text: "text-white" },
+    { label: "В черзі", value: stats.pending, cls: "from-zinc-700/30 to-zinc-800/30", text: "text-zinc-300" },
+    { label: "В процесі", value: stats.in_progress, cls: "from-sky-500/10 to-sky-500/5", text: "text-sky-300" },
+    { label: "Відповіли", value: stats.replied, cls: "from-emerald-500/10 to-emerald-500/5", text: "text-emerald-300" },
+    { label: "Завершили", value: stats.done, cls: "from-violet-500/10 to-violet-500/5", text: "text-violet-300" },
+    { label: "Помилки", value: stats.error, cls: "from-red-500/10 to-red-500/5", text: "text-red-300" },
   ];
+
+  const replyRate = stats.total > 0 ? Math.round((stats.replied / stats.total) * 100) : 0;
+  const progressPct = stats.total > 0
+    ? Math.round(((stats.done + stats.replied + stats.error) / stats.total) * 100)
+    : 0;
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {cards.map((c) => (
-          <div key={c.label} className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+          <div
+            key={c.label}
+            className={`p-4 bg-linear-to-br ${c.cls} border border-zinc-800 rounded-xl`}
+          >
             <p className="text-xs text-zinc-500 uppercase tracking-wider">{c.label}</p>
-            <p className={`text-3xl font-bold mt-1 ${c.cls}`}>{c.value}</p>
+            <p className={`text-3xl font-bold mt-1 ${c.text}`}>{c.value}</p>
           </div>
         ))}
       </div>
+
+      {stats.total > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Прогрес</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-linear-to-r from-violet-600 to-violet-400 transition-all duration-500"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+              <span className="text-lg font-bold text-white w-12 text-right">{progressPct}%</span>
+            </div>
+          </div>
+          <div className="p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Reply rate</p>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-linear-to-r from-emerald-600 to-emerald-400 transition-all duration-500"
+                  style={{ width: `${replyRate}%` }}
+                />
+              </div>
+              <span className="text-lg font-bold text-white w-12 text-right">{replyRate}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Latest activity */}
+      {leads.length > 0 && (
+        <div className="mt-6 p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Остання активність</p>
+          <div className="flex flex-col gap-2">
+            {[...leads]
+              .filter((l) => l.last_action_at)
+              .sort((a, b) => (b.last_action_at || "").localeCompare(a.last_action_at || ""))
+              .slice(0, 5)
+              .map((l) => {
+                const meta = LEAD_STATUS_META[l.status];
+                return (
+                  <div key={l._id} className="flex items-center gap-3 text-sm">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} />
+                    <span className="text-white min-w-0 truncate flex-1">{l.contact_name}</span>
+                    <span className="text-xs text-zinc-500 whitespace-nowrap">{meta.label}</span>
+                    <span className="text-[11px] text-zinc-600 whitespace-nowrap">{toLocal(l.last_action_at)}</span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

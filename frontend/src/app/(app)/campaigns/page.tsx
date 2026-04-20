@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { toLocal } from "@/lib/datetime";
 
 interface CampaignStats {
   total: number;
@@ -25,17 +26,12 @@ interface Campaign {
   stats: CampaignStats;
 }
 
-const STATUS_META: Record<Campaign["status"], { label: string; cls: string }> = {
-  draft: { label: "Чернетка", cls: "bg-zinc-700/40 text-zinc-300 border-zinc-700" },
-  active: { label: "Активна", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" },
-  paused: { label: "Пауза", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30" },
-  done: { label: "Завершено", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30" },
+const STATUS_META: Record<Campaign["status"], { label: string; cls: string; dot: string }> = {
+  draft: { label: "Чернетка", cls: "bg-zinc-700/40 text-zinc-300 border-zinc-700", dot: "bg-zinc-400" },
+  active: { label: "Активна", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", dot: "bg-emerald-400 animate-pulse" },
+  paused: { label: "Пауза", cls: "bg-amber-500/15 text-amber-300 border-amber-500/30", dot: "bg-amber-400" },
+  done: { label: "Завершено", cls: "bg-violet-500/15 text-violet-300 border-violet-500/30", dot: "bg-violet-400" },
 };
-
-function formatDate(iso?: string | null) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("uk", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -139,7 +135,8 @@ export default function CampaignsPage() {
                         </p>
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
                           {meta.label}
                         </span>
                       </td>
@@ -147,7 +144,7 @@ export default function CampaignsPage() {
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-violet-500"
+                              className="h-full bg-linear-to-r from-violet-600 to-violet-400 transition-all duration-500"
                               style={{ width: `${progress}%` }}
                             />
                           </div>
@@ -161,7 +158,7 @@ export default function CampaignsPage() {
                         <p className="text-sm text-zinc-300">{replyRate}%</p>
                         <p className="text-[11px] text-zinc-600">{c.stats.replied} з {c.stats.total}</p>
                       </td>
-                      <td className="py-3 px-4 text-xs text-zinc-500">{formatDate(c.created_at)}</td>
+                      <td className="py-3 px-4 text-xs text-zinc-500">{toLocal(c.created_at)}</td>
                     </tr>
                   );
                 })}
