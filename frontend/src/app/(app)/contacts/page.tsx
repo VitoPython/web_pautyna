@@ -115,7 +115,8 @@ export default function ContactsPage() {
             )}
           </div>
         ) : (
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px]">
             <thead>
               <tr className="border-b border-zinc-800 text-left">
                 <th className="py-3 px-3 text-xs font-medium text-zinc-500 uppercase tracking-wider">Контакт</th>
@@ -203,6 +204,7 @@ export default function ContactsPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

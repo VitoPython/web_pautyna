@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -110,6 +111,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const collapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+  const mobileOpen = useUIStore((s) => s.mobileSidebarOpen);
+  const setMobileOpen = useUIStore((s) => s.setMobileSidebarOpen);
   const unreadNotifications = useUIStore((s) => s.unreadNotifications);
   const unreadMessages = useUIStore((s) => s.unreadMessages);
   const soundEnabled = useUIStore((s) => s.soundEnabled);
@@ -119,12 +122,29 @@ export default function Sidebar() {
 
   const badges = { unreadMessages, unreadNotifications };
 
+  // Auto-close the mobile drawer when navigating.
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname, setMobileOpen]);
+
+  const widthCls = collapsed ? "md:w-16" : "md:w-56";
+
   return (
-    <aside
-      className={`flex flex-col bg-zinc-950 border-r border-zinc-800 h-full transition-all duration-200 ${
-        collapsed ? "w-16" : "w-56"
-      }`}
-    >
+    <>
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/60"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+      <aside
+        className={`flex flex-col bg-zinc-950 border-r border-zinc-800 h-full transition-all duration-200 z-40 ${widthCls} ${
+          mobileOpen
+            ? "fixed inset-y-0 left-0 w-64"
+            : "fixed -left-64 w-64 md:static md:left-auto"
+        }`}
+      >
       {/* Logo */}
       <div className="flex items-center gap-2 px-4 h-14 border-b border-zinc-800 shrink-0">
         <button onClick={toggleSidebar} className="text-violet-400 hover:text-violet-300 transition-colors">
@@ -227,5 +247,6 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   );
 }

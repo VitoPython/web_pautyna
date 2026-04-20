@@ -12,6 +12,8 @@ const initialSound = (() => {
 interface UIState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
+  mobileSidebarOpen: boolean;
+  setMobileSidebarOpen: (open: boolean) => void;
   unreadNotifications: number;
   unreadMessages: number;
   setUnreadNotifications: (count: number) => void;
@@ -23,6 +25,8 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  mobileSidebarOpen: false,
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   unreadNotifications: 0,
   unreadMessages: 0,
   setUnreadNotifications: (count) => set({ unreadNotifications: count }),

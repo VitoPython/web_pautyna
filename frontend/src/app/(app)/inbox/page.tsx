@@ -217,7 +217,9 @@ export default function InboxPage() {
   return (
     <div className="flex h-full">
       {/* Chat list */}
-      <div className="w-80 shrink-0 border-r border-zinc-800 flex flex-col">
+      <div className={`md:w-80 md:shrink-0 md:border-r md:border-zinc-800 md:flex flex-col w-full ${
+        selectedChat ? "hidden md:flex" : "flex flex-1"
+      }`}>
         <div className="p-4 border-b border-zinc-800 shrink-0">
           <div className="flex items-center justify-between mb-3">
             <h1 className="text-lg font-bold text-white">Inbox</h1>
@@ -326,7 +328,7 @@ export default function InboxPage() {
       </div>
 
       {/* Chat view */}
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className={`flex-1 min-w-0 flex-col ${selectedChat ? "flex" : "hidden md:flex"}`}>
         {!selectedChat ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
@@ -340,8 +342,17 @@ export default function InboxPage() {
         ) : (
           <>
             {/* Chat header */}
-            <div className="flex items-center justify-between px-6 h-14 border-b border-zinc-800 shrink-0">
+            <div className="flex items-center justify-between px-4 md:px-6 h-14 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
+                <button
+                  onClick={() => setSelectedChat(null)}
+                  className="md:hidden text-zinc-400 hover:text-white p-1 -ml-1"
+                  aria-label="Назад"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                    <polyline points="15,18 9,12 15,6" />
+                  </svg>
+                </button>
                 <ChatAvatar url={selectedChat.contact_avatar} name={selectedChat.contact_name} size="sm" />
                 <div className="min-w-0">
                   <p className="text-white font-semibold truncate">{selectedChat.contact_name}</p>

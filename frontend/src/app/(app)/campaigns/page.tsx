@@ -99,8 +99,8 @@ export default function CampaignsPage() {
             </button>
           </div>
         ) : (
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
-            <table className="w-full">
+          <div className="border border-zinc-800 rounded-xl overflow-x-auto">
+            <table className="w-full min-w-[640px]">
               <thead className="bg-zinc-900/60">
                 <tr className="text-left">
                   <th className="py-3 px-4 text-xs font-medium text-zinc-500 uppercase tracking-wider">Кампанія</th>
