@@ -6,7 +6,7 @@ configurable delays between steps. Execution is driven by a Celery beat task
 that fires every minute.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
@@ -105,17 +105,21 @@ async def update_campaign(campaign_id: str, data: CampaignUpdate, user_id: str =
     await db.campaigns.update_one({"_id": existing["_id"]}, {"$set": updates})
 
     # Transitioning to "active" — wake up leads that were queued while draft/paused.
-    # Scheduler filter is `next_action_at <= now`, so a null value means the lead
-    # never fires. Set those to `now` so the next tick picks them up.
+    # Set next_action_at = now + the lead's current step's delay_minutes so the
+    # first step honors its "start delay" instead of firing immediately.
     if data.status == "active" and existing.get("status") != "active":
-        await db.campaign_leads.update_many(
-            {
-                "campaign_id": campaign_id,
-                "status": {"$in": ["pending", "in_progress"]},
-                "next_action_at": None,
-            },
-            {"$set": {"next_action_at": now}},
-        )
+        steps = data.steps and [s.model_dump() for s in data.steps] or existing.get("steps") or []
+        async for lead in db.campaign_leads.find({
+            "campaign_id": campaign_id,
+            "status": {"$in": ["pending", "in_progress"]},
+            "next_action_at": None,
+        }):
+            idx = int(lead.get("current_step") or 0)
+            delay = int((steps[idx] if idx < len(steps) else {}).get("delay_minutes", 0) or 0)
+            await db.campaign_leads.update_one(
+                {"_id": lead["_id"]},
+                {"$set": {"next_action_at": now + timedelta(minutes=delay)}},
+            )
 
     return {"ok": True}
 
@@ -188,6 +192,12 @@ async def add_leads(campaign_id: str, data: LeadAdd, user_id: str = Depends(get_
         return {"added": 0, "skipped": len(data.contact_ids)}
 
     now = datetime.utcnow()
+    # Honor step 0's delay when inserting into an active campaign. For drafts
+    # we stamp null and let the PATCH→active transition compute the delay then.
+    first_step = (campaign.get("steps") or [{}])[0] if campaign.get("steps") else {}
+    first_delay = int((first_step or {}).get("delay_minutes", 0) or 0)
+    initial_next = (now + timedelta(minutes=first_delay)) if campaign.get("status") == "active" else None
+
     docs = [
         {
             "campaign_id": campaign_id,
@@ -195,7 +205,7 @@ async def add_leads(campaign_id: str, data: LeadAdd, user_id: str = Depends(get_
             "contact_id": cid,
             "status": "pending",
             "current_step": 0,
-            "next_action_at": now if campaign.get("status") == "active" else None,
+            "next_action_at": initial_next,
             "last_action_at": None,
             "error": "",
             "added_at": now,

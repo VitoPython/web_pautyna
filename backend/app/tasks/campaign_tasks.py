@@ -216,15 +216,27 @@ async def _scheduler_tick():
     if not active_campaigns:
         return 0
 
-    # Pick up leads that are due OR stuck with null next_action_at (added while
-    # draft, then the campaign was later activated). Treat null as "run now".
+    # Backfill: leads in active campaigns with null next_action_at get their
+    # current step's delay applied. This covers any state that slipped past
+    # the PATCH→active wake-up (e.g. leads added via an older code path).
+    for cid, campaign in active_campaigns.items():
+        steps = campaign.get("steps") or []
+        async for lead in db.campaign_leads.find({
+            "campaign_id": cid,
+            "status": {"$in": ["pending", "in_progress"]},
+            "next_action_at": None,
+        }):
+            idx = int(lead.get("current_step") or 0)
+            delay = int((steps[idx] if idx < len(steps) else {}).get("delay_minutes", 0) or 0)
+            await db.campaign_leads.update_one(
+                {"_id": lead["_id"]},
+                {"$set": {"next_action_at": now + timedelta(minutes=delay)}},
+            )
+
     cursor = db.campaign_leads.find({
         "campaign_id": {"$in": list(active_campaigns.keys())},
         "status": {"$in": ["pending", "in_progress"]},
-        "$or": [
-            {"next_action_at": {"$lte": now}},
-            {"next_action_at": None},
-        ],
+        "next_action_at": {"$lte": now},
     }).limit(200)
 
     processed = 0
