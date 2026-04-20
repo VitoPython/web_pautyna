@@ -130,3 +130,23 @@ async def upload_avatar(
     )
 
     return {"avatar_url": avatar_url}
+
+
+@router.post("/{contact_id}/enrich")
+async def enrich_contact_endpoint(
+    contact_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Pull fresh attendee data from Unipile and fill empty contact fields
+    (name, avatar, LinkedIn job/company/location, phone for Telegram/WhatsApp)."""
+    from app.services.enrichment import enrich_contact
+    db = get_db()
+    contact = await db.contacts.find_one({"_id": ObjectId(contact_id), "owner_id": user_id})
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    result = await enrich_contact(db, user_id, contact_id)
+    refreshed = await db.contacts.find_one({"_id": ObjectId(contact_id)})
+    if refreshed:
+        refreshed["_id"] = str(refreshed["_id"])
+        _fill_unipile_avatar(refreshed)
+    return {**result, "contact": refreshed}

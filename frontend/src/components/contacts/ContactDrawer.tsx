@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import api from "@/lib/api";
 
 export interface DrawerContact {
   _id: string;
@@ -21,6 +22,7 @@ interface Props {
   contact: DrawerContact;
   onClose: () => void;
   onEdit: () => void;
+  onEnriched?: () => void;
 }
 
 // Platforms that support direct in-app messaging via Unipile.
@@ -55,7 +57,10 @@ function externalUrl(type: string, profileId: string): string | null {
   return meta.profileBase + profileId;
 }
 
-export default function ContactDrawer({ contact, onClose, onEdit }: Props) {
+export default function ContactDrawer({ contact, onClose, onEdit, onEnriched }: Props) {
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
+
   // Close on Esc.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -64,6 +69,28 @@ export default function ContactDrawer({ contact, onClose, onEdit }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const handleEnrich = async () => {
+    setEnriching(true);
+    setEnrichMsg(null);
+    try {
+      const { data } = await api.post<{ fields: string[]; sources: string[] }>(
+        `/contacts/${contact._id}/enrich`,
+      );
+      if (data.fields?.length) {
+        setEnrichMsg(`Оновлено: ${data.fields.join(", ")}`);
+        onEnriched?.();
+      } else {
+        setEnrichMsg("Немає нових даних для збагачення");
+      }
+    } catch {
+      setEnrichMsg("Не вдалось збагатити");
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const canEnrich = contact.platforms.some((p) => p.account_id && p.chat_id);
 
   const email = getField(contact, "email");
   const phone = getField(contact, "phone");
@@ -87,6 +114,19 @@ export default function ContactDrawer({ contact, onClose, onEdit }: Props) {
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between sticky top-0 bg-zinc-900 z-10">
           <h2 className="text-white font-semibold">Контакт</h2>
           <div className="flex items-center gap-2">
+            {canEnrich && (
+              <button
+                onClick={handleEnrich}
+                disabled={enriching}
+                className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 text-violet-200 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                title="Збагатити з Unipile"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={`w-3.5 h-3.5 ${enriching ? "animate-spin" : ""}`}>
+                  <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.45 20.73L12 17.27L6.55 20.73L8 14.14L3 9.27L9.61 8.26L12 2z" />
+                </svg>
+                {enriching ? "…" : "Enrich"}
+              </button>
+            )}
             <button
               onClick={onEdit}
               className="text-zinc-400 hover:text-violet-300 transition-colors p-1.5 rounded-lg hover:bg-zinc-800"
@@ -109,6 +149,12 @@ export default function ContactDrawer({ contact, onClose, onEdit }: Props) {
             </button>
           </div>
         </div>
+
+        {enrichMsg && (
+          <div className="px-4 py-2 text-xs text-violet-200 bg-violet-500/10 border-b border-violet-500/20">
+            {enrichMsg}
+          </div>
+        )}
 
         {/* Profile */}
         <div className="p-5 flex items-center gap-4 border-b border-zinc-800">

@@ -216,6 +216,33 @@ async def add_leads(campaign_id: str, data: LeadAdd, user_id: str = Depends(get_
     return {"added": len(new_ids), "skipped": len(data.contact_ids) - len(new_ids)}
 
 
+@router.post("/{campaign_id}/enrich")
+async def enrich_campaign_leads(
+    campaign_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """Run Unipile enrichment for every contact on this campaign's leads."""
+    from app.services.enrichment import enrich_contact
+
+    db = get_db()
+    campaign = await db.campaigns.find_one({"_id": ObjectId(campaign_id), "owner_id": user_id})
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    leads = await db.campaign_leads.find({"campaign_id": campaign_id}).to_list(500)
+    enriched_count = 0
+    total_fields = 0
+    for lead in leads:
+        try:
+            result = await enrich_contact(db, user_id, lead["contact_id"])
+            if result["fields"]:
+                enriched_count += 1
+                total_fields += len(result["fields"])
+        except Exception:
+            continue
+    return {"ok": True, "enriched_contacts": enriched_count, "fields_filled": total_fields}
+
+
 @router.delete("/{campaign_id}/leads/{lead_id}")
 async def remove_lead(campaign_id: str, lead_id: str, user_id: str = Depends(get_current_user_id)):
     db = get_db()

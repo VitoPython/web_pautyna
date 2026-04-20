@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
@@ -59,6 +59,7 @@ export default function InboxPage() {
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const setUnreadMessages = useUIStore((s) => s.setUnreadMessages);
   const searchParams = useSearchParams();
   const contactParam = searchParams?.get("contact") || "";
@@ -138,21 +139,34 @@ export default function InboxPage() {
     }
   });
 
-  // Auto-scroll only when the message count grows or we switched chats.
-  // Without this gate, every idempotent poll fires a scroll animation.
+  // Auto-scroll policy:
+  //  - When chat switches: jump the container to the bottom synchronously
+  //    BEFORE paint (useLayoutEffect + scrollTop = scrollHeight). This avoids
+  //    the "render at top, then animate down" flash.
+  //  - When new messages arrive in the current chat: smooth-scroll to bottom
+  //    so the user sees the new bubble slide in.
+  //  - Polling that returns the same list does nothing (applyMessages keeps
+  //    the prev reference so the effect doesn't fire).
   const prevLenRef = useRef(0);
   const prevChatRef = useRef<string | null>(null);
-  useEffect(() => {
+
+  useLayoutEffect(() => {
     const chatId = selectedChat?.contact_id || null;
     const switched = chatId !== prevChatRef.current;
+    if (switched && messagesScrollRef.current) {
+      // Instant jump — no animation, no intermediate "at top" state visible.
+      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+    }
+    prevChatRef.current = chatId;
+  }, [messages, selectedChat?.contact_id]);
+
+  useEffect(() => {
     const grew = messages.length > prevLenRef.current;
-    if (switched || grew) {
-      messagesEndRef.current?.scrollIntoView({
-        behavior: switched ? "auto" : "smooth",
-      });
+    const sameChat = selectedChat?.contact_id === prevChatRef.current;
+    if (grew && sameChat && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
     prevLenRef.current = messages.length;
-    prevChatRef.current = chatId;
   }, [messages, selectedChat?.contact_id]);
 
   // When chat is selected — load + silently sync messages (sync must not
@@ -407,7 +421,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-auto px-6 py-4">
+            <div ref={messagesScrollRef} className="flex-1 overflow-auto px-6 py-4">
               {loadingMessages ? (
                 <div className="flex items-center justify-center py-10">
                   <div className="w-6 h-6 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />

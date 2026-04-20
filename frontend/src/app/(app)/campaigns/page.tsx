@@ -95,10 +95,23 @@ export default function CampaignsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {campaigns.map((c) => (
-              <CampaignCard key={c._id} campaign={c} />
-            ))}
+          <div className="border border-zinc-800 rounded-xl overflow-x-auto bg-zinc-900/40">
+            <table className="w-full min-w-[860px]">
+              <thead>
+                <tr className="text-left border-b border-zinc-800">
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Кампанія</th>
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Статус</th>
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider w-[260px]">Прогрес</th>
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Ліди</th>
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Reply</th>
+                  <th className="py-3 px-5 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">Створено</th>
+                  <th className="py-3 px-5 w-12"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => <CampaignRow key={c._id} campaign={c} />)}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -116,11 +129,11 @@ export default function CampaignsPage() {
   );
 }
 
-// ─── Campaign card ────────────────────────────────────────────────────
+// ─── Campaign row ────────────────────────────────────────────────────
 
-function CampaignCard({ campaign: c }: { campaign: Campaign }) {
+function CampaignRow({ campaign: c }: { campaign: Campaign }) {
   const meta = STATUS_META[c.status] || STATUS_META.draft;
-  const total = c.stats.total || 1; // avoid division by zero on empty campaigns
+  const total = c.stats.total || 1;
   const segments = [
     { key: "replied", value: c.stats.replied, color: "bg-emerald-500" },
     { key: "done", value: c.stats.done, color: "bg-violet-500" },
@@ -136,29 +149,28 @@ function CampaignCard({ campaign: c }: { campaign: Campaign }) {
     : 0;
 
   return (
-    <Link
-      href={`/campaigns/${c._id}`}
-      className="group relative flex flex-col p-5 bg-zinc-900/60 border border-zinc-800 rounded-xl hover:border-violet-500/40 hover:bg-zinc-900 transition-all"
-    >
-      <div className="flex items-start justify-between mb-3">
+    <tr className="border-t border-zinc-800 hover:bg-zinc-900/60 transition-colors group">
+      <td className="py-4 px-5">
+        <Link
+          href={`/campaigns/${c._id}`}
+          className="block"
+        >
+          <p className="text-white font-medium group-hover:text-violet-200 transition-colors">{c.name}</p>
+          {c.description && (
+            <p className="text-[11px] text-zinc-500 mt-0.5 truncate max-w-[300px]">{c.description}</p>
+          )}
+          <p className="text-[11px] text-zinc-600 mt-0.5">
+            {c.steps.length} {c.steps.length === 1 ? "крок" : "кроків"}
+          </p>
+        </Link>
+      </td>
+      <td className="py-4 px-5">
         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border ${meta.cls}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
           {meta.label}
         </span>
-        <span className="text-[11px] text-zinc-600 whitespace-nowrap">
-          {c.steps.length} {c.steps.length === 1 ? "крок" : "кроків"}
-        </span>
-      </div>
-
-      <h3 className="text-white font-semibold text-lg leading-tight truncate group-hover:text-violet-200 transition-colors">
-        {c.name}
-      </h3>
-      {c.description && (
-        <p className="text-xs text-zinc-500 mt-1 line-clamp-2 min-h-[2em]">{c.description}</p>
-      )}
-
-      {/* Segmented progress bar */}
-      <div className="mt-4">
+      </td>
+      <td className="py-4 px-5">
         <div className="flex h-2 rounded-full overflow-hidden bg-zinc-800">
           {segments.map((s) => (
             s.value > 0 ? (
@@ -171,27 +183,28 @@ function CampaignCard({ campaign: c }: { campaign: Campaign }) {
             ) : null
           ))}
         </div>
-        <div className="flex items-center justify-between mt-2 text-[11px]">
-          <span className="text-zinc-500">
-            <span className="text-white font-medium">{c.stats.total}</span> лідів
-          </span>
-          <span className="text-zinc-500">
-            Прогрес <span className="text-violet-300 font-medium">{progress}%</span>
-          </span>
-          <span className="text-zinc-500">
-            Reply <span className="text-emerald-300 font-medium">{replyRate}%</span>
-          </span>
-        </div>
-      </div>
-
-      <div className="mt-4 pt-3 border-t border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-600">
-        <span>Створено {toLocal(c.created_at)}</span>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4 text-zinc-600 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all">
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <polyline points="12,5 19,12 12,19" />
-        </svg>
-      </div>
-    </Link>
+        <p className="text-[11px] text-zinc-600 mt-1 tabular-nums">
+          {progress}% · {c.stats.done + c.stats.replied} / {c.stats.total}
+        </p>
+      </td>
+      <td className="py-4 px-5 text-sm text-zinc-300 tabular-nums">{c.stats.total}</td>
+      <td className="py-4 px-5">
+        <p className="text-sm text-emerald-300 font-medium tabular-nums">{replyRate}%</p>
+        <p className="text-[11px] text-zinc-600 tabular-nums">{c.stats.replied} з {c.stats.total}</p>
+      </td>
+      <td className="py-4 px-5 text-xs text-zinc-500 whitespace-nowrap">{toLocal(c.created_at)}</td>
+      <td className="py-4 px-5">
+        <Link
+          href={`/campaigns/${c._id}`}
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-zinc-500 group-hover:text-violet-300 group-hover:bg-zinc-800 transition-all"
+          title="Відкрити"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-4 h-4 group-hover:translate-x-0.5 transition-transform">
+            <polyline points="9,6 15,12 9,18" />
+          </svg>
+        </Link>
+      </td>
+    </tr>
   );
 }
 

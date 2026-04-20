@@ -218,6 +218,7 @@ export default function ContactsPage() {
             setDrawerContact(null);
             setModal("edit");
           }}
+          onEnriched={load}
         />
       )}
 

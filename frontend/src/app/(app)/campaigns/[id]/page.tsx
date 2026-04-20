@@ -228,6 +228,8 @@ function LeadsTab({
   onChanged: () => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
 
   // Tick every second to update countdowns.
   const [, setTick] = useState(0);
@@ -242,19 +244,61 @@ function LeadsTab({
     onChanged();
   };
 
+  const enrichAll = async () => {
+    if (enriching || leads.length === 0) return;
+    setEnriching(true);
+    setEnrichMsg(null);
+    try {
+      const { data } = await api.post<{ enriched_contacts: number; fields_filled: number }>(
+        `/campaigns/${campaignId}/enrich`,
+      );
+      setEnrichMsg(
+        data.enriched_contacts > 0
+          ? `Оновлено ${data.enriched_contacts} контактів (${data.fields_filled} полів)`
+          : "Немає нових даних для збагачення"
+      );
+      onChanged();
+    } catch {
+      setEnrichMsg("Не вдалось збагатити");
+    } finally {
+      setEnriching(false);
+      setTimeout(() => setEnrichMsg(null), 5000);
+    }
+  };
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <p className="text-sm text-zinc-400">
           {leads.length > 0 ? `${leads.length} лідів` : "Ще немає лідів"}
         </p>
-        <button
-          onClick={() => setAddOpen(true)}
-          className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors shadow-lg shadow-violet-500/20"
-        >
-          + Додати лідів
-        </button>
+        <div className="flex items-center gap-2">
+          {leads.length > 0 && (
+            <button
+              onClick={enrichAll}
+              disabled={enriching}
+              className="px-3 py-1.5 text-sm text-violet-200 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              title="Збагатити дані через Unipile"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={`w-3.5 h-3.5 ${enriching ? "animate-spin" : ""}`}>
+                <path d="M12 2L14.39 8.26L21 9.27L16 14.14L17.45 20.73L12 17.27L6.55 20.73L8 14.14L3 9.27L9.61 8.26L12 2z" />
+              </svg>
+              {enriching ? "Збагачую…" : "Enrich all"}
+            </button>
+          )}
+          <button
+            onClick={() => setAddOpen(true)}
+            className="px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors shadow-lg shadow-violet-500/20"
+          >
+            + Додати лідів
+          </button>
+        </div>
       </div>
+      {enrichMsg && (
+        <div className="mb-3 px-3 py-2 text-xs text-violet-200 bg-violet-500/10 border border-violet-500/20 rounded-lg">
+          {enrichMsg}
+        </div>
+      )}
 
       {leads.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-48 border border-dashed border-zinc-800 rounded-xl">
