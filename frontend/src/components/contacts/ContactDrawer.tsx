@@ -74,15 +74,20 @@ export default function ContactDrawer({ contact, onClose, onEdit, onEnriched }: 
     setEnriching(true);
     setEnrichMsg(null);
     try {
-      const { data } = await api.post<{ fields: string[]; sources: string[] }>(
+      const { data } = await api.post<{ fields: string[]; sources: string[]; notes: string[] }>(
         `/contacts/${contact._id}/enrich`,
       );
+      const parts: string[] = [];
       if (data.fields?.length) {
-        setEnrichMsg(`Оновлено: ${data.fields.join(", ")}`);
+        parts.push(`Оновлено: ${data.fields.join(", ")}`);
         onEnriched?.();
       } else {
-        setEnrichMsg("Немає нових даних для збагачення");
+        parts.push("Немає нових даних для збагачення");
       }
+      if (data.notes?.length) {
+        parts.push(...data.notes);
+      }
+      setEnrichMsg(parts.join(" · "));
     } catch {
       setEnrichMsg("Не вдалось збагатити");
     } finally {

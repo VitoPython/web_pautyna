@@ -219,6 +219,23 @@ async def get_attendee(account_id: str, attendee_id: str) -> dict:
     )
 
 
+async def get_user_profile(account_id: str, provider_id: str) -> dict:
+    """Richer profile lookup. For LinkedIn this returns headline, current
+    position, company, education, location. For Telegram it's limited to
+    username/bio but still fills a couple of blanks we can't get from
+    /chat_attendees. Returns {} if the endpoint 404s for this provider.
+    """
+    try:
+        return await _request(
+            "GET",
+            f"/api/v1/users/{provider_id}",
+            params={"account_id": account_id},
+        )
+    except Exception as e:
+        log.info(f"Unipile get_user_profile({provider_id}) skipped: {e}")
+        return {}
+
+
 # ─── Contacts / users ────────────────────────────────────────────────
 
 async def list_chat_attendees(account_id: str, limit: int = 200, cursor: str | None = None) -> dict:
