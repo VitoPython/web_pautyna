@@ -182,6 +182,9 @@ async def _handle_message_received(db, user_id: str, event: dict):
         "created_at": now,
     })
 
+    from app.services.campaign_replies import mark_campaign_replies
+    await mark_campaign_replies(db, user_id, contact_id)
+
     await db.notifications.insert_one({
         "owner_id": user_id,
         "type": "new_message",

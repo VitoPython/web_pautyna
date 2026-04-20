@@ -162,10 +162,39 @@ async def _execute_step_for_lead(db, campaign: dict, lead: dict) -> None:
         )
 
 
+async def _backfill_replies(db) -> int:
+    """Flip leads whose contact replied between ticks. Handles the case where
+    an inbound message landed via a polling path that didn't run our reply hook,
+    or predates the hook being deployed. Cheap: only looks at non-terminal leads.
+    """
+    count = 0
+    cursor = db.campaign_leads.find({
+        "status": {"$in": ["pending", "in_progress", "done"]},
+        "last_action_at": {"$ne": None},
+    })
+    async for lead in cursor:
+        reply = await db.messages.find_one({
+            "owner_id": lead["owner_id"],
+            "contact_id": lead["contact_id"],
+            "direction": "inbound",
+            "sent_at": {"$gt": lead["last_action_at"]},
+        })
+        if reply:
+            await db.campaign_leads.update_one(
+                {"_id": lead["_id"]},
+                {"$set": {"status": "replied", "next_action_at": None}},
+            )
+            count += 1
+    return count
+
+
 async def _scheduler_tick():
     """Run due leads across all active campaigns."""
     db = get_db()
     now = datetime.utcnow()
+
+    # First: flip any leads that replied since we last looked.
+    await _backfill_replies(db)
 
     active_campaigns = {
         str(c["_id"]): c

@@ -393,6 +393,8 @@ async def _sync_email_messages(db, user_id: str, contact: dict, plat: dict, limi
         })
 
         if direction == "inbound" and not em.get("read_date"):
+            from app.services.campaign_replies import mark_campaign_replies
+            await mark_campaign_replies(db, user_id, str(contact["_id"]))
             await db.notifications.insert_one({
                 "owner_id": user_id,
                 "type": "new_message",
@@ -511,6 +513,8 @@ async def _sync_messages_from_unipile(db, user_id: str, contact: dict, limit: in
         # that Unipile says are already seen (old history fetched on first
         # sync) — we only want to alert on genuinely new chatter.
         if direction == "inbound" and not m.get("seen"):
+            from app.services.campaign_replies import mark_campaign_replies
+            await mark_campaign_replies(db, user_id, str(contact["_id"]))
             await db.notifications.insert_one({
                 "owner_id": user_id,
                 "type": "new_message",
