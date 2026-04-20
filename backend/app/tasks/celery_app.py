@@ -7,7 +7,7 @@ celery_app = Celery(
     "pavutyna",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
-    include=["app.tasks.action_tasks"],
+    include=["app.tasks.action_tasks", "app.tasks.campaign_tasks"],
 )
 
 celery_app.conf.update(
@@ -33,6 +33,10 @@ celery_app.conf.beat_schedule = {
     "sync-contacts-every-15min": {
         "task": "app.tasks.action_tasks.sync_contacts_all",
         "schedule": 15 * 60.0,
+    },
+    "campaigns-scheduler-every-minute": {
+        "task": "app.tasks.campaign_tasks.campaigns_scheduler",
+        "schedule": 60.0,
     },
 }
 

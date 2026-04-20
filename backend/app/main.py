@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import close_db, connect_db
-from app.routers import actions, ai, auth, canvas, contacts, integrations, messages, notifications, pages, unipile, uploads, webhooks
+from app.routers import actions, ai, auth, campaigns, canvas, contacts, integrations, messages, notifications, pages, unipile, uploads, webhooks
 from app.services.websocket_manager import ws_manager
 
 
@@ -66,6 +66,7 @@ app.include_router(integrations.router, prefix=settings.API_V1_PREFIX)
 app.include_router(uploads.router, prefix=settings.API_V1_PREFIX)
 app.include_router(unipile.router, prefix=settings.API_V1_PREFIX)
 app.include_router(ai.router, prefix=settings.API_V1_PREFIX)
+app.include_router(campaigns.router, prefix=settings.API_V1_PREFIX)
 app.include_router(webhooks.router)  # public, no /api/v1 prefix (external callers)
 
 
